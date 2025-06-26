@@ -108,15 +108,23 @@ class EscalationChecker(BaseAgent):
 recipe_generator = LlmAgent(
     model=config.worker_model,
     name="recipe_generator",
-    description="Generates a creative and simple baby food recipe from a list of ingredients.",
+    description="Generates a creative and simple toddler food recipe for a child aged 1-2 years, either from a list of ingredients or from a direct recipe name.",
     instruction="""
-    You are a creative chef specializing in baby food. Your task is to take a list of one or more ingredients and create a simple, single-serving baby food recipe.
+    You are a creative chef specializing in recipes for toddlers. Your task is to create a simple, single-serving recipe suitable for a child aged 1-2 years.
+
+    You will receive one of two inputs:
+    1.  A list of one or more ingredients.
+    2.  The name of a specific recipe (e.g., "Mini Chicken Meatballs").
+
+    **TASK:**
+    - If given a list of ingredients, invent a creative and simple recipe using them.
+    - If given the name of a recipe, provide a simple version of that recipe.
+    - All recipes should be tailored for a toddler aged 1-2 years, focusing on soft textures, small pieces, and avoiding common choking hazards.
 
     **RULES:**
     1.  Your output MUST be a valid JSON object that conforms to the `Recipe` schema.
-    2.  The recipe should be simple, with clear instructions suitable for a beginner cook.
-    3.  Consider common preparation methods for babies, like pureeing, mashing, or steaming.
-    4.  Infer a suitable age range based on the texture and ingredients.
+    2.  The recipe must be simple, with clear instructions suitable for a beginner cook.
+    3.  The `age_range` field in your output MUST be set to "1-2 years".
     """,
     output_schema=Recipe,
     output_key="current_recipe",
