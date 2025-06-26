@@ -265,48 +265,6 @@ final_recipe_presenter_agent = LlmAgent(
     output_key="final_recipe_report",
 )
 
-recipe_creation_pipeline = SequentialAgent(
-    name="recipe_creation_pipeline",
-    description="Takes an initial recipe, runs it through an iterative refinement loop with a pediatrician critic, and then formats the final, approved recipe.",
-    sub_agents=[
-        LoopAgent(
-            name="iterative_refinement_loop",
-            max_iterations=config.max_search_iterations,
-            sub_agents=[
-                pediatrician_critic_agent,
-                EscalationChecker(name="escalation_checker"),
-                recipe_refiner_agent,
-            ],
-        ),
-        final_recipe_presenter_agent,
-    ],
-)
-
-interactive_recipe_agent = LlmAgent(
-    name="interactive_recipe_agent",
-    model=config.worker_model,
-    description=(
-        "The primary assistant for creating baby food recipes. It collaborates"
-        " with the user to generate a recipe and then gets it approved before"
-        " finalization."
-    ),
-    instruction=f"""
-    You are a friendly and helpful AI assistant for parents, named 'Tiny Tastes'.
-    Your job is to help users create delicious and healthy baby food recipes.
-
-    **Workflow:**
-    1.  **Generate Recipe:** When the user gives you a list of ingredients, your *only* first step is to call the `recipe_generator` tool.
-    2.  **Present for Approval:** After the `recipe_generator` tool has run, its output will be in the 'current_recipe' state. Present this recipe to the user for approval. For example: "I've come up with a recipe called '{{current_recipe.title}}'. Does this look good? If so, I can have our AI pediatrician review it."
-    3.  **Execute Refinement:** Once the user gives EXPLICIT approval (e.g., "looks good", "yes please"), you MUST delegate the task to the `recipe_creation_pipeline` agent.
-
-    Current date: {datetime.datetime.now().strftime("%Y-%m-%d")}
-    Do not perform any research or evaluation yourself. Your job is to Generate, Present, and Delegate.
-    """,
-    sub_agents=[recipe_creation_pipeline],
-    tools=[AgentTool(recipe_generator)],
-    output_key="initial_recipe",
-)
-
 # --- New Agent for Ingredient Images ---
 from .image_utils import generate_ingredient_image
 
@@ -395,10 +353,9 @@ class IngredientImageAgent(BaseAgent):
 
 ingredient_image_agent = IngredientImageAgent()
 
-# Update the pipeline
 recipe_creation_pipeline = SequentialAgent(
     name="recipe_creation_pipeline",
-    description="Takes an initial recipe, runs it through an iterative refinement loop with a pediatrician critic, generates ingredient images, and then formats the final, approved recipe.",
+    description="Takes an initial recipe, runs it through an iterative refinement loop with a pediatrician critic, and then formats the final, approved recipe.",
     sub_agents=[
         LoopAgent(
             name="iterative_refinement_loop",
@@ -409,13 +366,33 @@ recipe_creation_pipeline = SequentialAgent(
                 recipe_refiner_agent,
             ],
         ),
-        ingredient_image_agent, # New agent added here
         final_recipe_presenter_agent,
     ],
 )
 
-# Re-assign to root_agent if interactive_recipe_agent uses the modified pipeline
-interactive_recipe_agent.sub_agents = [recipe_creation_pipeline]
+interactive_recipe_agent = LlmAgent(
+    name="interactive_recipe_agent",
+    model=config.worker_model,
+    description=(
+        "The primary assistant for creating baby food recipes. It collaborates"
+        " with the user to generate a recipe and then gets it approved before"
+        " finalization."
+    ),
+    instruction=f"""
+    You are a friendly and helpful AI assistant for parents, named 'Tiny Tastes'.
+    Your job is to help users create delicious and healthy baby food recipes.
 
+    **Workflow:**
+    1.  **Generate Recipe:** When the user gives you a list of ingredients, your *only* first step is to call the `recipe_generator` tool.
+    2.  **Present for Approval:** After the `recipe_generator` tool has run, its output will be in the 'current_recipe' state. Present this recipe to the user for approval. For example: "I've come up with a recipe called '{{current_recipe.title}}'. Does this look good? If so, I can have our AI pediatrician review it."
+    3.  **Execute Refinement:** Once the user gives EXPLICIT approval (e.g., "looks good", "yes please"), you MUST delegate the task to the `recipe_creation_pipeline` agent.
+
+    Current date: {datetime.datetime.now().strftime("%Y-%m-%d")}
+    Do not perform any research or evaluation yourself. Your job is to Generate, Present, and Delegate.
+    """,
+    sub_agents=[recipe_creation_pipeline],
+    tools=[AgentTool(recipe_generator)],
+    output_key="initial_recipe",
+)
 
 root_agent = interactive_recipe_agent

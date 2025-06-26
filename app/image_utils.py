@@ -20,18 +20,6 @@ from google.api_core import exceptions as google_exceptions
 from google import genai
 from google.genai import types
 
-# Configure the Gemini client
-# Ensure GOOGLE_API_KEY is set in your environment or .env file
-try:
-    genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
-except KeyError:
-    logging.error(
-        "GOOGLE_API_KEY not found in environment. Please set it to use Gemini."
-    )
-    # Allow client initialization to fail later if key is truly missing,
-    # but log the common setup issue.
-    pass
-
 
 def generate_ingredient_image(ingredient_name: str) -> str | None:
     """
