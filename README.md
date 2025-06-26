@@ -1,6 +1,6 @@
-# Gemini Fullstack Agent Development Kit (ADK) Quickstart
+# Tiny Tastes App Quickstart
 
-The **Gemini Fullstack Agent Development Kit (ADK) Quickstart** is a production-ready blueprint for building a sophisticated, fullstack research agent with Gemini. It's built to demonstrate how the ADK helps structure complex agentic workflows, build modular agents, and incorporate critical Human-in-the-Loop (HITL) steps.
+The **Tiny Tastes App Quickstart** is a production-ready blueprint for building a sophisticated, fullstack research agent with Gemini. It's built to demonstrate how the ADK helps structure complex agentic workflows, build modular agents, and incorporate critical Human-in-the-Loop (HITL) steps.
 
 <table>
   <thead>
@@ -26,9 +26,11 @@ The **Gemini Fullstack Agent Development Kit (ADK) Quickstart** is a production-
 
 Here is the agent in action:
 
-<img src="https://github.com/GoogleCloudPlatform/agent-starter-pack/blob/main/docs/images/adk_gemini_fullstack.gif?raw=true" width="80%" alt="Gemini Fullstack ADK Preview">
+<img src="https://github.com/GoogleCloudPlatform/agent-starter-pack/blob/main/docs/images/adk_gemini_fullstack.gif?raw=true" width="80%" alt="Tiny Tastes App Preview">
 
-This project adapts concepts from the [Gemini FullStack LangGraph Quickstart](https://github.com/google-gemini/gemini-fullstack-langgraph-quickstart) for the frontend app. 
+This project adapts concepts from the [Gemini FullStack LangGraph Quickstart](https://github.com/google-gemini/gemini-fullstack-langgraph-quickstart) for the frontend app.
+
+This project is based on the original [Gemini Fullstack Agent Development Kit (ADK) Quickstart](https://github.com/google/adk-samples/tree/main/python/agents/gemini-fullstack).
 
 ## 🚀 Getting Started: From Zero to Running Agent in 1 Minute
 **Prerequisites:** **[Python 3.10+](https://www.python.org/downloads/)**, **[Node.js](https://nodejs.org/)**, **[uv](https://github.com/astral-sh/uv)**
@@ -75,21 +77,21 @@ Your agent is now running at `http://localhost:5173`.
 You'll also need: **[Google Cloud SDK](https://cloud.google.com/sdk/docs/install)** and a **Google Cloud Project** with the **Vertex AI API** enabled.
 
 #### Step 1: Create Project from Template
-This command uses the [Agent Starter Pack](https://goo.gle/agent-starter-pack) to create a new directory (`my-fullstack-agent`) with all the necessary code.
+This command uses the [Agent Starter Pack](https://goo.gle/agent-starter-pack) to create a new directory (`my-tiny-tastes-app`) with all the necessary code.
 ```bash
 # Create and activate a virtual environment
 python -m venv .venv && source .venv/bin/activate # On Windows: .venv\Scripts\activate
 
 # Install the starter pack and create your project
 pip install --upgrade agent-starter-pack
-agent-starter-pack create my-fullstack-agent -a adk_gemini_fullstack
+agent-starter-pack create my-tiny-tastes-app -a adk_gemini_fullstack
 ```
 <details>
 <summary>⚡️ Alternative: Using uv</summary>
 
 If you have [`uv`](https://github.com/astral-sh/uv) installed, you can create and set up your project with a single command:
 ```bash
-uvx agent-starter-pack create my-fullstack-agent -a adk_gemini_fullstack
+uvx agent-starter-pack create my-tiny-tastes-app -a adk_gemini_fullstack
 ```
 This command handles creating the project without needing to pre-install the package into a virtual environment.
 </details>
@@ -99,7 +101,7 @@ You'll be prompted to select a deployment option (Agent Engine or Cloud Run) and
 #### Step 2: Install & Run
 Navigate into your **newly created project folder**, then install dependencies and start the servers.
 ```bash
-cd my-fullstack-agent && make install && make dev
+cd my-tiny-tastes-app && make install && make dev
 ```
 Your agent is now running at `http://localhost:5173`.
 
@@ -131,7 +133,7 @@ The backend agent, defined in `app/agent.py`, follows a sophisticated workflow t
 
 The following diagram illustrates the agent's architecture and workflow:
 
-![ADK Gemini Fullstack Architecture](https://github.com/GoogleCloudPlatform/agent-starter-pack/blob/main/docs/images/adk_gemini_fullstack_architecture.png?raw=true)
+![Tiny Tastes App Architecture](https://github.com/GoogleCloudPlatform/agent-starter-pack/blob/main/docs/images/adk_gemini_fullstack_architecture.png?raw=true)
 
 This process is broken into two main phases:
 
