@@ -1,14 +1,7 @@
 [project]
-name = "gemini-fullstack"
+name = "tiny-tastes-adk"
 version = "0.1.0"
 description = ""
-authors = [
-    {name = "Amit Dutta", email = "amitdutta@google.com"},
-    {name = "Deepak Moonat", email = "dmoonat@google.com"},
-    {name = "Elia Secchi", email = "eliasecchi@google.com"},
-    {name = "Erwin Huizenga", email = "erwinh@google.com"},
-    {name = "Lavi Nigam", email = "lavinigam@google.com"},
-]
 dependencies = [
     "google-adk==1.4.2",
 ]
