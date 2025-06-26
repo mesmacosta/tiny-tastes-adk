@@ -189,25 +189,39 @@ You can modify and extend this agent's behavior by editing the backend code.
 
 ### Example Interaction
 
-> **User:** A report on the last Google I/O
+> **User:** Can you make a recipe with sweet potato and carrot?
 >
-> **Agent:** Here's a research plan for a report on the last Google I/O:
+> **Agent:** I can help with that! I've drafted a recipe called "Sunshine Puree" with sweet potato and carrot. It includes simple steps for steaming and blending these veggies. Does this look good? If so, I can have our AI pediatrician review it for safety and nutrition.
 >
-> *   Analyze the key announcements and product updates made at Google I/O 2025.
-> *   Identify the central themes and strategic directions emphasized by Google during the event, particularly concerning AI, Android, and other emerging technologies like Android XR.
-> *   Investigate the reception and industry impact of the major product unveilings and feature enhancements.
-> *   Examine any significant shifts or continuities in Google's developer strategy as presented at the conference.
-> *   Assess the implications of the announced technologies and initiatives for developers, consumers, and the broader tech landscape.
+> **User:** Yes, that sounds great! Please proceed.
 >
-> Does this plan look good, or would you like to refine it further? Once approved, I can initiate the research.
+> *(The agent's `recipe_creation_pipeline` now starts. The `pediatrician_critic_agent` reviews the "Sunshine Puree" recipe.)*
 >
-> **User:** Looks good!
-> *(The agent proceeds to autonomously execute the research, showing its progress on the timeline.)*
+> *(After a short while, if the recipe passes the review...)*
 >
-> **Agent:**
-> 
-> Google I/O 2025: Key Announcements and Highlights
-> ....
+> **Agent:** Great news! Our AI pediatrician has reviewed the "Sunshine Puree" and it's approved! Here's the final recipe:
+>
+> # Sunshine Puree
+> A delightful and nutritious blend of sweet potato and carrot, perfect for little ones.
+> Age Appropriateness: 1-2 years
+>
+> ## Ingredients
+> *   1 medium sweet potato, peeled and cubed
+> *   2 medium carrots, peeled and sliced
+> *   1/4 cup water (for steaming/blending, adjust as needed)
+>
+> ## Instructions
+> 1.  Steam the sweet potato and carrot cubes/slices until very tender (approx. 15-20 minutes).
+> 2.  Allow to cool slightly.
+> 3.  Transfer the cooked vegetables to a blender. Add a little water.
+> 4.  Blend until smooth, adding more water a tablespoon at a time to reach desired consistency.
+>
+> ## Nutrition Notes
+> This puree is packed with Vitamin A from both sweet potatoes and carrots, which is great for vision and immune health. Sweet potatoes also offer Vitamin C and dietary fiber.
+>
+> ## Safety First!
+> *   Always ensure the puree is cooled to a safe temperature before serving.
+> *   Ensure the texture is appropriate for your baby's age and feeding ability to prevent choking. For younger babies, a thinner puree might be needed.
 
 ## Troubleshooting
 
