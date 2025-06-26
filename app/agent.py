@@ -170,10 +170,19 @@ recipe_refiner_agent = LlmAgent(
     1.  **Review Feedback:** Carefully read the `comment` in the 'pediatrician_evaluation' state key to understand what needs to be fixed.
     2.  **Research Solutions:** Execute EVERY search query provided in the `follow_up_questions` using the `Google Search` tool to find solutions.
     3.  **Revise the Recipe:** Using the research findings, rewrite the original recipe from 'current_recipe' to address all the pediatrician's concerns. This may involve changing ingredients, measurements, or instructions.
-    4.  **Output:** Your output MUST be the new, improved, and complete recipe as a single JSON object conforming to the `Recipe` schema.
+    4.  **Output:** Your output MUST be a single, raw JSON string that strictly conforms to the `Recipe` schema. Do NOT add any markdown formatting like ```json ... ``` around the JSON string.
+        The `Recipe` schema is as follows:
+        {{
+            "title": "string (The creative and appealing name of the recipe.)",
+            "description": "string (A brief, one-sentence summary of the recipe.)",
+            "ingredients": "list[string] (A list of all ingredients with precise measurements.)",
+            "instructions": "list[string] (Step-by-step preparation and cooking instructions.)",
+            "age_appropriateness": "string (The recommended baby age range for this recipe (e.g., '6-8 months').)"
+        }}
+    Ensure your entire output is ONLY this JSON string.
     """,
     tools=[google_search],
-    output_schema=Recipe,
+    # output_schema=Recipe,  # Removed to allow use of tools
     output_key="current_recipe",
 )
 
