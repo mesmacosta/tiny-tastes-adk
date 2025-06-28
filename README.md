@@ -135,7 +135,7 @@ The process involves several key agents:
         3.  **Delegate to Pipeline:** If the user approves, it passes the recipe to the `recipe_creation_pipeline` for detailed review and refinement.
 
 2.  **`recipe_generator`:**
-    *   **Description:** Generates a creative and simple toddler food recipe (1-2 years old) based on user input (ingredients or recipe name).
+    *   **Description:** Generates a creative and simple toddler food recipe (6+ months) based on user input (ingredients or recipe name).
     *   **Output:** A `Recipe` object containing the title, description, ingredients, instructions, and age appropriateness.
 
 3.  **`recipe_creation_pipeline` (Sequential Agent):**
@@ -193,7 +193,7 @@ You can modify and extend this agent's behavior by editing the backend code.
 >
 > # Sunshine Puree
 > A delightful and nutritious blend of sweet potato and carrot, perfect for little ones.
-> Age Appropriateness: 1-2 years
+> Age Appropriateness: 6+ months
 >
 > ## Ingredients
 > *   1 medium sweet potato, peeled and cubed
