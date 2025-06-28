@@ -24,12 +24,6 @@ The **Tiny Tastes App Quickstart** is a production-ready blueprint for building 
   </tbody>
 </table>
 
-Here is the agent in action:
-
-<img src="https://github.com/GoogleCloudPlatform/agent-starter-pack/blob/main/docs/images/adk_gemini_fullstack.gif?raw=true" width="80%" alt="Tiny Tastes App Preview">
-
-This project adapts concepts from the [Gemini FullStack LangGraph Quickstart](https://github.com/google-gemini/gemini-fullstack-langgraph-quickstart) for the frontend app.
-
 This project is based on the original [Gemini Fullstack Agent Development Kit (ADK) Quickstart](https://github.com/google/adk-samples/tree/main/python/agents/gemini-fullstack).
 
 ## 🚀 Getting Started: From Zero to Running Agent in 1 Minute
@@ -130,10 +124,6 @@ For robust, **production-ready deployments** with automated CI/CD, please follow
 ## How the Agent Thinks: A Multi-Agent Workflow for Baby Food Recipes
 
 The backend, defined in `app/agent.py`, uses a series of specialized agents to help users create safe and healthy baby food recipes.
-
-The following diagram illustrates the agent's architecture and workflow:
-
-![Tiny Tastes App Architecture](https://github.com/GoogleCloudPlatform/agent-starter-pack/blob/main/docs/images/adk_gemini_fullstack_architecture.png?raw=true)
 
 The process involves several key agents:
 

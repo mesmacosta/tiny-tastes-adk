@@ -164,9 +164,9 @@ def collect_research_sources_callback(callback_context: CallbackContext) -> None
 recipe_generator = LlmAgent(
     model=config.worker_model,
     name="recipe_generator",
-    description="Generates a creative and simple toddler food recipe for a child aged 1-2 years, either from a list of ingredients or from a direct recipe name.",
+    description="Generates a creative and simple toddler food recipe for a child aged 6+ months, either from a list of ingredients or from a direct recipe name.",
     instruction="""
-    You are a creative chef specializing in recipes for toddlers. Your task is to create a simple, single-serving recipe suitable for a child aged 1-2 years.
+    You are a creative chef specializing in recipes for toddlers. Your task is to create a simple, single-serving recipe suitable for a child aged 6+ months.
 
     You will receive one of two inputs:
     1.  A list of one or more ingredients.
@@ -175,12 +175,12 @@ recipe_generator = LlmAgent(
     **TASK:**
     - If given a list of ingredients, invent a creative and simple recipe using them.
     - If given the name of a recipe, provide a simple version of that recipe.
-    - All recipes should be tailored for a toddler aged 1-2 years, focusing on soft textures, small pieces, and avoiding common choking hazards.
+    - All recipes should be tailored for a toddler aged 6+ months, focusing on soft textures, small pieces, and avoiding common choking hazards.
 
     **RULES:**
     1.  Your output MUST be a valid JSON object that conforms to the `Recipe` schema.
     2.  The recipe must be simple, with clear instructions suitable for a beginner cook.
-    3.  The `age_range` field in your output MUST be set to "1-2 years".
+    3.  The `age_range` field in your output MUST be set to "6+ months".
     """,
     tools=[google_search],
     output_key="current_recipe",
@@ -264,94 +264,6 @@ final_recipe_presenter_agent = LlmAgent(
     """,
     output_key="final_recipe_report",
 )
-
-# --- New Agent for Ingredient Images ---
-from .image_utils import generate_ingredient_image
-
-class IngredientImageAgent(BaseAgent):
-    """Generates images for each ingredient in the current recipe."""
-
-    def __init__(self, name: str = "ingredient_image_generator"):
-        super().__init__(name=name)
-        # No LLM needed here, it's a direct utility caller
-
-    async def _run_async_impl(
-        self, ctx: InvocationContext
-    ) -> AsyncGenerator[Event, None]:
-        current_recipe_data = ctx.session.state.get("current_recipe")
-        if not current_recipe_data:
-            logging.warning(f"[{self.name}] No 'current_recipe' found in state. Skipping image generation.")
-            yield Event(author=self.name, data={}, output_key="ingredient_images_b64")
-            return
-
-        # current_recipe_data could be a dict or a Pydantic model instance
-        # Ensure it's treated as a dictionary for consistent access
-        if hasattr(current_recipe_data, 'model_dump'): # Pydantic model
-            recipe_dict = current_recipe_data.model_dump()
-        elif isinstance(current_recipe_data, dict):
-            recipe_dict = current_recipe_data
-        else:
-            logging.error(
-                f"[{self.name}] 'current_recipe' is of unexpected type: {type(current_recipe_data)}. "
-                "Expected dict or Pydantic model."
-            )
-            yield Event(author=self.name, data={}, output_key="ingredient_images_b64")
-            return
-
-        ingredients = recipe_dict.get("ingredients", [])
-        if not ingredients:
-            logging.info(f"[{self.name}] No ingredients found in 'current_recipe'.")
-            yield Event(author=self.name, data={}, output_key="ingredient_images_b64")
-            return
-
-        logging.info(f"[{self.name}] Generating images for ingredients: {ingredients}")
-        images_data: dict[str, str | None] = {}
-        for ingredient_item in ingredients:
-            # Assuming ingredient_item is just the name string, e.g., "1 cup of sweet potato"
-            # We might need to extract the core ingredient name if the string is more complex.
-            # For now, let's assume it's simple enough or the image gen can handle it.
-            # A more robust approach would be to have the Recipe model store ingredients
-            # as objects with {name: "sweet potato", quantity: "1 cup"}
-            ingredient_name = str(ingredient_item) # Ensure it's a string
-
-            # A simple heuristic to extract a more generic name if it contains typical quantity words
-            # This is very basic and might need significant improvement
-            parts = ingredient_name.split(" of ")
-            if len(parts) > 1:
-                core_ingredient = parts[-1].strip()
-            else:
-                # Remove common quantity descriptors if they are at the beginning
-                common_descriptors = ["cup", "cups", "tablespoon", "tablespoons", "teaspoon", "teaspoons", "medium", "large", "small", "diced", "chopped", "sliced"]
-                words = ingredient_name.split()
-                # Filter out descriptors if they appear early and other words follow
-                if words and words[0].lower().rstrip('s') in common_descriptors and len(words) > 1:
-                     # Attempt to take the rest of the string
-                    potential_name = " ".join(words[1:])
-                    # check if the first word of potential_name is also a descriptor
-                    potential_name_parts = potential_name.split()
-                    if potential_name_parts and potential_name_parts[0].lower().rstrip('s') in common_descriptors and len(potential_name_parts) > 1:
-                        core_ingredient = " ".join(potential_name_parts[1:])
-                    else:
-                        core_ingredient = potential_name
-                else:
-                    core_ingredient = ingredient_name
-
-            logging.info(f"[{self.name}] Extracted '{core_ingredient}' from '{ingredient_name}' for image generation.")
-
-            image_b64 = generate_ingredient_image(core_ingredient)
-            if image_b64:
-                images_data[ingredient_name] = image_b64 # Store with original full ingredient text as key
-            else:
-                images_data[ingredient_name] = None # Explicitly store None if generation failed
-
-        logging.info(f"[{self.name}] Finished image generation. Results: {list(images_data.keys())}")
-        yield Event(
-            author=self.name,
-            data=images_data, # Pass images_data dict directly
-            output_key="ingredient_images_b64",
-        )
-
-ingredient_image_agent = IngredientImageAgent()
 
 recipe_creation_pipeline = SequentialAgent(
     name="recipe_creation_pipeline",
