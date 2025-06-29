@@ -94,14 +94,31 @@ if __name__ == '__main__':
 
     # --- CONFIGURE YOUR PROJECT ID HERE ---
     # It's recommended to use an environment variable for this.
-    GCP_PROJECT_ID = os.environ.get("GCP_PROJECT_ID", "")  # Or hardcode: "your-gcp-project-id"
+    # Fallback to GOOGLE_CLOUD_PROJECT if GCP_PROJECT_ID is not set
+    GCP_PROJECT_ID = os.environ.get("GCP_PROJECT_ID") or os.environ.get("GOOGLE_CLOUD_PROJECT")
+    if not GCP_PROJECT_ID:
+        # As a last resort, try to get it from the gcloud default if running in a GCP environment
+        # This is a bit more involved and might not always be available or desired
+        try:
+            import subprocess
+            project_id_process = subprocess.run(['gcloud', 'config', 'get-value', 'project'], capture_output=True, text=True, check=False)
+            if project_id_process.returncode == 0 and project_id_process.stdout.strip():
+                GCP_PROJECT_ID = project_id_process.stdout.strip()
+                logging.info(f"Derived GCP_PROJECT_ID from gcloud config: {GCP_PROJECT_ID}")
+            else:
+                logging.warning("Could not derive GCP_PROJECT_ID from gcloud config.")
+        except FileNotFoundError:
+            logging.warning("gcloud CLI not found, cannot derive GCP_PROJECT_ID automatically.")
+        except Exception as e:
+            logging.warning(f"Error deriving GCP_PROJECT_ID from gcloud: {e}")
+
 
     # --- SCRIPT EXECUTION ---
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
     if not GCP_PROJECT_ID:
-        logging.error("FATAL: Please set the GCP_PROJECT_ID variable in the script or "
-                      "as an environment variable.")
+        logging.error("FATAL: Please set the GCP_PROJECT_ID or GOOGLE_CLOUD_PROJECT environment "
+                      "variable, or ensure gcloud config is set up.")
     else:
         test_ingredients = ["a whole carrot", "broccoli florets", "a single ripe avocado", "a sprig of rosemary"]
         for item in test_ingredients:
