@@ -1,112 +1,124 @@
-# Copyright 2025 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import base64
 import logging
 import os
 
+#
+import vertexai
+from vertexai.preview.vision_models import ImageGenerationModel
 from google.api_core import exceptions as google_exceptions
-from google import genai
-from google.genai import types
 
 
-def generate_ingredient_image(ingredient_name: str) -> str | None:
+def generate_ingredient_image(
+        ingredient_name: str,
+        project_id: str,
+        location: str = "us-central1",
+) -> str | None:
     """
-    Generates an image for a given ingredient name using Gemini
+    Generates an image for a given ingredient name using a Vertex AI Imagen model
     and returns it as a base64 encoded string.
 
     Args:
         ingredient_name: The name of the ingredient (e.g., "sweet potato").
+        project_id: Your Google Cloud project ID.
+        location: The Google Cloud location for Vertex AI (e.g., "us-central1").
 
     Returns:
         A base64 encoded string of the generated image (PNG format),
         or None if image generation fails or no image is returned.
     """
     try:
-        client = genai.Client() # Initialize client here to pick up config
-        model = client.models.get(
-            "gemini-2.0-flash-preview-image-generation"
-        ) # More explicit model fetching
+        # FIX: Initialize the Vertex AI SDK.
+        # This uses your project and location and authenticates via Application
+        # Default Credentials. Ensure you have run `gcloud auth application-default login`.
+        vertexai.init(project=project_id, location=location)
+        logging.info(f"Vertex AI initialized for project '{project_id}' in '{location}'.")
     except Exception as e:
-        logging.error(f"Failed to initialize Gemini client or model: {e}")
+        logging.error(f"Failed to initialize Vertex AI: {e}. "
+                      "Ensure your project ID is correct and you have authenticated.")
         return None
 
-    prompt = (
-        f"Generate a clear, vibrant, photorealistic image of a single {ingredient_name}, "
-        "on a clean, plain white background. The ingredient should be the main focus. "
-        "The image should be suitable as an icon in a recipe app."
-    )
+    # FIX: Use a standard Imagen model designed for high-quality image generation.
+    model = ImageGenerationModel.from_pretrained("imagegeneration@006")
 
-    logging.info(f"Generating image for: {ingredient_name} with prompt: {prompt}")
+    # A more detailed prompt for better, more consistent results.
+    prompt = (
+        f"a clear, vibrant, photorealistic studio photograph of a single {ingredient_name}, "
+        "on a clean, plain white background. The ingredient should be the main focus, centered. "
+        "High resolution, professional food photography, no shadows."
+    )
+    logging.info(f"Generating image for: '{ingredient_name}'")
 
     try:
-        response = model.generate_content(
-            contents=prompt,
-            generation_config=types.GenerationConfig(
-                response_modalities=["TEXT", "IMAGE"]
-            ),
-            # It's good practice to add safety settings,
-            # though defaults are usually reasonable.
-            # safety_settings=[
-            #     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-            #     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-            #     {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            #     {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-            # ]
+        # FIX: Call the correct API method for generating images.
+        response = model.generate_images(
+            prompt=prompt,
+            number_of_images=1,  # We only need one image.
         )
 
-        image_bytes = None
-        # Iterate through parts to find the image data
-        if response.candidates and response.candidates[0].content.parts:
-            for part in response.candidates[0].content.parts:
-                if part.inline_data and part.inline_data.data:
-                    # Assuming the model returns PNG by default or common case.
-                    # Mime type could be checked with part.inline_data.mime_type
-                    image_bytes = part.inline_data.data
-                    logging.info(f"Successfully generated image for {ingredient_name}, "
-                                 f"mime_type: {part.inline_data.mime_type}, "
-                                 f"size: {len(image_bytes)} bytes.")
-                    break  # Found the image
-
-        if image_bytes:
+        # FIX: The response object contains a list of `GeneratedImage` objects.
+        # We need to access the raw bytes from the first image.
+        if response.images:
+            image_obj = response.images[0]
+            # The raw image data is stored in the `_image_bytes` attribute.
+            image_bytes = image_obj._image_bytes
+            logging.info(f"Successfully generated image for '{ingredient_name}', "
+                         f"size: {len(image_bytes)} bytes.")
+            # Encode the raw bytes into a base64 string.
             return base64.b64encode(image_bytes).decode("utf-8")
         else:
             logging.warning(
-                f"No image data found in response for ingredient: {ingredient_name}. "
-                f"Response: {response.text if hasattr(response, 'text') else 'N/A'}"
+                f"No image data found in API response for ingredient: {ingredient_name}. "
+                f"Response object: {response}"
             )
             return None
 
     except google_exceptions.GoogleAPIError as e:
-        logging.error(f"Google API error during image generation for {ingredient_name}: {e}")
+        logging.error(f"Google API error for '{ingredient_name}': {e}")
+        if "Safety filters" in str(e):
+            logging.error("The prompt was likely blocked by safety filters.")
         return None
     except Exception as e:
-        logging.error(f"An unexpected error occurred during image generation for {ingredient_name}: {e}")
+        logging.error(f"An unexpected error occurred for '{ingredient_name}': {e}")
         return None
 
+
 if __name__ == '__main__':
-    # Simple test (ensure GOOGLE_API_KEY is set)
-    logging.basicConfig(level=logging.INFO)
-    test_ingredients = ["carrot", "broccoli florets", "ripe avocado", "nonexistentingredientxyz"]
-    for item in test_ingredients:
-        print(f"\nTesting with: {item}")
-        b64_image = generate_ingredient_image(item)
-        if b64_image:
-            print(f"Got base64 image for {item} (first 50 chars): {b64_image[:50]}...")
-            # To save and view:
-            # with open(f"{item.replace(' ', '_')}.png", "wb") as f:
-            #     f.write(base64.b64decode(b64_image))
-            # print(f"Saved {item.replace(' ', '_')}.png")
-        else:
-            print(f"Failed to get image for {item}")
+    # --- IMPORTANT SETUP ---
+    # 1. Have a Google Cloud project with the Vertex AI API enabled.
+    #    (https://console.cloud.google.com/vertex-ai)
+    # 2. Install the required libraries:
+    #    pip install google-cloud-aiplatform Pillow
+    # 3. Authenticate your environment in your terminal:
+    #    gcloud auth application-default login
+    # 4. Set your Google Cloud Project ID below.
+
+    # --- CONFIGURE YOUR PROJECT ID HERE ---
+    # It's recommended to use an environment variable for this.
+    GCP_PROJECT_ID = os.environ.get("GCP_PROJECT_ID", "")  # Or hardcode: "your-gcp-project-id"
+
+    # --- SCRIPT EXECUTION ---
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+
+    if not GCP_PROJECT_ID:
+        logging.error("FATAL: Please set the GCP_PROJECT_ID variable in the script or "
+                      "as an environment variable.")
+    else:
+        test_ingredients = ["a whole carrot", "broccoli florets", "a single ripe avocado", "a sprig of rosemary"]
+        for item in test_ingredients:
+            print("-" * 40)
+            b64_image = generate_ingredient_image(item, project_id=GCP_PROJECT_ID)
+            if b64_image:
+                print(f"SUCCESS: Got base64 image for '{item}'.")
+                print(f"         (first 50 chars: {b64_image[:50]}...)")
+
+                # To save and view the image, uncomment the following lines:
+                # try:
+                #     filename = f"{item.replace(' ', '_')}.png"
+                #     with open(filename, "wb") as f:
+                #         f.write(base64.b64decode(b64_image))
+                #     print(f"         Saved image to '{filename}'")
+                # except Exception as e:
+                #     print(f"         Could not save file: {e}")
+
+            else:
+                print(f"FAILURE: Failed to get image for '{item}'. Check logs for details.")
