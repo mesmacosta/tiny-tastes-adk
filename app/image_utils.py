@@ -129,13 +129,13 @@ if __name__ == '__main__':
                 print(f"         (first 50 chars: {b64_image[:50]}...)")
 
                 # To save and view the image, uncomment the following lines:
-                # try:
-                #     filename = f"{item.replace(' ', '_')}.png"
-                #     with open(filename, "wb") as f:
-                #         f.write(base64.b64decode(b64_image))
-                #     print(f"         Saved image to '{filename}'")
-                # except Exception as e:
-                #     print(f"         Could not save file: {e}")
+                try:
+                    filename = f"{item.replace(' ', '_')}.png"
+                    with open(filename, "wb") as f:
+                        f.write(base64.b64decode(b64_image))
+                    print(f"         Saved image to '{filename}'")
+                except Exception as e:
+                    print(f"         Could not save file: {e}")
 
             else:
                 print(f"FAILURE: Failed to get image for '{item}'. Check logs for details.")

@@ -1,4 +1,5 @@
 import datetime
+import json
 import logging
 from collections.abc import AsyncGenerator
 from typing import Literal
@@ -189,7 +190,7 @@ recipe_generator = LlmAgent(
     - After generating the recipe, you will also be responsible for generating an image for each main ingredient.
 
     **RULES:**
-    1.  Your output MUST be a valid JSON object that conforms to the `Recipe` schema. This includes the `ingredient_images` field.
+    1.  Your output MUST be a single, raw JSON object that conforms to the `Recipe` schema. Do NOT add any markdown formatting like ```json ... ``` around the JSON string.
     2.  The recipe must be simple, with clear instructions suitable for a beginner cook.
     3.  The `age_range` field in your output MUST be set to "6+ months".
     """,
@@ -197,10 +198,24 @@ recipe_generator = LlmAgent(
     output_key="current_recipe",
 )
 
-async def recipe_generator_postprocessor(ctx: InvocationContext, agent_output: dict) -> dict:
+async def recipe_generator_postprocessor(callback_context: CallbackContext) -> dict | None:
     """
     Post-processes the recipe_generator output to add ingredient images.
+    This function is an after_agent_callback.
+    It retrieves the agent's output, generates images for ingredients,
+    and returns the modified output.
     """
+    agent_output = callback_context._invocation_context.session.state.get("current_recipe")
+
+    if isinstance(agent_output, str):
+        try:
+            if agent_output.strip().startswith("```json"):
+                agent_output = agent_output.strip()[7:-3].strip()
+            agent_output = json.loads(agent_output)
+        except json.JSONDecodeError:
+            logging.error(f"Failed to decode JSON from agent output: {agent_output}")
+            return None
+
     if not isinstance(agent_output, dict) or "ingredients" not in agent_output:
         logging.warning("Recipe generator output is not a dict or missing 'ingredients'. Skipping image generation.")
         return agent_output
@@ -213,43 +228,41 @@ async def recipe_generator_postprocessor(ctx: InvocationContext, agent_output: d
 
     ingredient_images_list = []
     gcp_project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
-    # Ensure GOOGLE_CLOUD_LOCATION is set, default if not.
     gcp_location = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
-
 
     if not gcp_project_id:
         logging.error("GOOGLE_CLOUD_PROJECT environment variable not set. Cannot generate ingredient images.")
-        agent_output["ingredient_images"] = [{"name": ing, "base64_image": None} for ing in recipe_ingredients]
+        agent_output["ingredient_images"] = [
+            IngredientImage(name=ing, base64_image=None).model_dump() for ing in recipe_ingredients
+        ]
         return agent_output
 
     logging.info(f"Generating images for {len(recipe_ingredients)} ingredients. Project: {gcp_project_id}, Location: {gcp_location}")
 
-    # Attempt to extract the core ingredient name for better image generation
-    # e.g., "1 cup chopped sweet potato" -> "sweet potato"
     processed_ingredient_names = []
-    for full_ingredient_desc in recipe_ingredients:
-        # This is a simple heuristic. More sophisticated parsing might be needed.
-        # Try to remove measurements and preparations.
-        parts = full_ingredient_desc.split(" ")
-        # Take the last few words, hoping to capture the essence.
-        # Heuristic: if "of" is present, take words after the last "of".
-        # Otherwise, try to take the last 1-3 words that are not common units.
+    # FIX: Handle cases where ingredients are dicts instead of strings
+    for ingredient in recipe_ingredients:
+        if isinstance(ingredient, dict):
+            # If it's a dict, assume the name is in a 'name' field
+            full_ingredient_desc = ingredient.get("name", "")
+        else:
+            full_ingredient_desc = str(ingredient) # Ensure it's a string
+
         name_to_search = full_ingredient_desc
         if " of " in full_ingredient_desc:
             name_to_search = full_ingredient_desc.split(" of ")[-1]
 
-        # Remove common adjectives/preparation instructions
         common_prep_words = ["chopped", "diced", "sliced", "cooked", "ripe", "fresh", "organic", "a", "an", "the", "some"]
         name_parts = [word for word in name_to_search.split() if word.lower() not in common_prep_words and not any(char.isdigit() for char in word)]
         simple_name = " ".join(name_parts).strip()
 
-        if not simple_name: # if stripping leaves nothing, use the original fragment
+        if not simple_name:
             simple_name = name_to_search if name_to_search != full_ingredient_desc else full_ingredient_desc.split(" ")[-1]
 
         processed_ingredient_names.append(simple_name if simple_name else full_ingredient_desc)
 
-
-    for i, full_ingredient_description in enumerate(recipe_ingredients):
+    for i, ingredient in enumerate(recipe_ingredients):
+        full_ingredient_description = ingredient.get("name") if isinstance(ingredient, dict) else str(ingredient)
         ingredient_name_for_image = processed_ingredient_names[i]
         logging.info(f"Attempting to generate image for: '{ingredient_name_for_image}' (from '{full_ingredient_description}')")
         try:
