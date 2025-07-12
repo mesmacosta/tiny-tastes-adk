@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b || true && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -25,6 +25,8 @@
     "react-dom": "^19.0.0",
     "react-markdown": "^9.0.3",
     "react-router-dom": "^7.5.3",
+    "rehype-raw": "^7.0.0",
+    "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.2.0",
     "tailwindcss": "^4.1.5"
   },

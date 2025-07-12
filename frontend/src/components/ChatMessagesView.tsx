@@ -8,6 +8,7 @@ import ReactMarkdown from "react-markdown";
 import { cn } from "@/utils";
 import { Badge } from "@/components/ui/badge";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
+import rehypeRaw from "rehype-raw";
 
 // Markdown component props type from former ReportView
 type MdComponentProps = {
@@ -21,8 +22,34 @@ interface ProcessedEvent {
   data: any;
 }
 
+const urlTransform = (url: string) => {
+  if (url.startsWith('data:image/')) {
+    return url;
+  }
+  // For all other URLs, use the default behavior
+  const newUrl = new URL(url, 'http://localhost'); // A base URL is required
+  return newUrl.href;
+};
+
 // Markdown components (from former ReportView.tsx)
 const mdComponents = {
+    // It ensures the 'src' attribute, with its base64 data, is always passed through.
+  img: ({ node, ...props }: MdComponentProps) => {
+    // This custom renderer directly accesses the `src` from the parsed markdown 'node'
+    // This is the most robust way to ensure the base64 data is never stripped out.
+    const imageSource = node?.properties?.src || '';
+    const altText = node?.properties?.alt || '';
+
+    return (
+      <img
+        {...props}
+        src={imageSource}
+        alt={altText}
+        style={{ backgroundBlendMode: 'multiply' }} // This is the key change
+        className={cn("inline-block h-6 w-6 ml-2 bg-transparent", props.className)}
+      />
+    );
+  },
   h1: ({ className, children, ...props }: MdComponentProps) => (
     <h1 className={cn("text-2xl font-bold mt-4 mb-2", className)} {...props}>
       {children}
@@ -67,7 +94,7 @@ const mdComponents = {
     </ol>
   ),
   li: ({ className, children, ...props }: MdComponentProps) => (
-    <li className={cn("mb-1", className)} {...props}>
+    <li className={cn("mb-1 flex items-center", className)} {...props}> {/* Added flex for alignment */}
       {children}
     </li>
   ),
@@ -148,7 +175,7 @@ const HumanMessageBubble: React.FC<HumanMessageBubbleProps> = ({
 }) => {
   return (
     <div className="text-white rounded-3xl break-words min-h-7 bg-neutral-700 max-w-[100%] sm:max-w-[90%] px-4 pt-3 rounded-br-lg">
-      <ReactMarkdown components={mdComponents}>
+      <ReactMarkdown components={mdComponents} rehypePlugins={[rehypeRaw]} urlTransform={urlTransform}>
         {message.content}
       </ReactMarkdown>
     </div>
@@ -212,7 +239,7 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
         )}
         <div className="flex items-start gap-3">
           <div className="flex-1">
-            <ReactMarkdown components={mdComponents}>
+            <ReactMarkdown components={mdComponents} rehypePlugins={[rehypeRaw]} urlTransform={urlTransform}>
               {message.content}
             </ReactMarkdown>
           </div>
@@ -244,7 +271,7 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
         {message.content && message.content.trim() && agent !== "interactive_planner_agent" && (
           <div className="flex items-start gap-3 mt-2">
             <div className="flex-1">
-              <ReactMarkdown components={mdComponents}>
+              <ReactMarkdown components={mdComponents} rehypePlugins={[rehypeRaw]} urlTransform={urlTransform}>
                 {message.content}
               </ReactMarkdown>
             </div>
@@ -268,7 +295,7 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
       <div className="relative break-words flex flex-col w-full">
         <div className="flex items-start gap-3">
           <div className="flex-1">
-            <ReactMarkdown components={mdComponents}>
+            <ReactMarkdown components={mdComponents} rehypePlugins={[rehypeRaw]} urlTransform={urlTransform}>
               {message.content}
             </ReactMarkdown>
           </div>

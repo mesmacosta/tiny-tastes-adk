@@ -3,6 +3,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { ChatMessagesView } from "@/components/ChatMessagesView";
 
+// This is the new constant that reads from your environment variables
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+// const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://tiny-tastes-adk-prod-44603466838.us-central1.run.app';
+
+
 // Update DisplayData to be a string type
 type DisplayData = string | null;
 
@@ -63,12 +68,12 @@ export default function App() {
   ): Promise<any> => {
     const startTime = Date.now();
     let lastError: Error;
-    
+
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       if (Date.now() - startTime > maxDuration) {
         throw new Error(`Retry timeout after ${maxDuration}ms`);
       }
-      
+
       try {
         return await fn();
       } catch (error) {
@@ -78,23 +83,24 @@ export default function App() {
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
-    
+
     throw lastError!;
   };
 
   const createSession = async (): Promise<{userId: string, sessionId: string, appName: string}> => {
     const generatedSessionId = uuidv4();
-    const response = await fetch(`/api/apps/app/users/u_999/sessions/${generatedSessionId}`, {
+    // Use the API_BASE_URL constant here
+    const response = await fetch(`${API_BASE_URL}/apps/app/users/u_999/sessions/${generatedSessionId}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       }
     });
-    
+
     if (!response.ok) {
       throw new Error(`Failed to create session: ${response.status} ${response.statusText}`);
     }
-    
+
     const data = await response.json();
     return {
       userId: data.userId,
@@ -105,8 +111,8 @@ export default function App() {
 
   const checkBackendHealth = async (): Promise<boolean> => {
     try {
-      // Use the docs endpoint or root endpoint to check if backend is ready
-      const response = await fetch("/api/docs", {
+      // Use the API_BASE_URL constant here
+      const response = await fetch(`${API_BASE_URL}/docs`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json"
@@ -138,13 +144,13 @@ export default function App() {
         textParts = parsed.content.parts
           .filter((part: any) => part.text)
           .map((part: any) => part.text);
-        
+
         // Check for function calls
         const functionCallPart = parsed.content.parts.find((part: any) => part.functionCall);
         if (functionCallPart) {
           functionCall = functionCallPart.functionCall;
         }
-        
+
         // Check for function responses
         const functionResponsePart = parsed.content.parts.find((part: any) => part.functionResponse);
         if (functionResponsePart) {
@@ -267,7 +273,7 @@ export default function App() {
     //        `iterative_refinement_loop` (loop agent) -> delegates to:
     //            `pediatrician_critic_agent` -> output `pediatrician_evaluation` (JSON with grade, comment, follow_up_questions)
     //            `escalation_checker` -> checks grade, may escalate to stop loop.
-    //            `recipe_refiner_agent` -> uses google_search tool, output `current_recipe` (JSON)
+    //            `recipe_refiner_agent` -> uses Google Search tool, output `current_recipe` (JSON)
     //        `final_recipe_presenter_agent` -> output `final_recipe_report` (Markdown string)
 
     // It's important to get the `final_recipe_report` from the state delta when `final_recipe_presenter_agent` runs.
@@ -340,7 +346,7 @@ export default function App() {
       }
     }
 
-    if (sources) { // Keep for google_search tool if it populates this
+    if (sources) { // Keep for Google Search tool if it populates this
       console.log('[SSE HANDLER] Adding Retrieved Sources timeline event:', sources);
       setMessageEvents(prev => new Map(prev).set(aiMessageId, [...(prev.get(aiMessageId) || []), {
         title: "Retrieved Sources", data: { type: 'sources', content: sources }
@@ -363,18 +369,24 @@ export default function App() {
 
     // Handle final report content (could be new recipe string or old boolean)
     if (finalReportContent) {
-      if (agent === "final_recipe_presenter_agent" && typeof finalReportContent === 'string') {
+      if ((agent === "final_recipe_presenter_agent" || agent === "image_embedding_agent") && typeof finalReportContent === 'string') {
+        console.log(agent);
         console.log('[SSE HANDLER] Final recipe report received from final_recipe_presenter_agent.');
-        setMessages(prev => {
-          const filtered = prev.filter(msg => msg.id !== aiMessageId || msg.content.trim() !== "");
-          return [...filtered, {
-            type: "ai",
-            content: finalReportContent as string, // Is a string here
-            id: aiMessageId + "_final",
-            agent: currentAgentRef.current,
-            finalReportContent: finalReportContent // Store the string content
-          }];
-        });
+        console.log(finalReportContent);
+        setMessages(prev =>
+          prev.map(msg =>
+            // Find the AI placeholder message by its original ID
+            msg.id === aiMessageId
+              ? { // If this is the message, return a new object with updated content
+                  ...msg,
+                  content: finalReportContent as string,
+                  agent: agent, // Update the agent name to the current one
+                  finalReportContent: finalReportContent, // Store the final content
+                }
+              : msg // Otherwise, return the message unchanged
+          )
+        );
+
         setDisplayData(finalReportContent as string);
       } else if (agent === "report_composer_with_citations" && typeof finalReportContent === 'boolean' && finalReportContent === true) {
         // This case handles the old boolean `final_report_with_citations`.
@@ -415,14 +427,14 @@ export default function App() {
       let currentUserId = userId;
       let currentSessionId = sessionId;
       let currentAppName = appName;
-      
+
       if (!currentSessionId || !currentUserId || !currentAppName) {
         console.log('Creating new session...');
         const sessionData = await retryWithBackoff(createSession);
         currentUserId = sessionData.userId;
         currentSessionId = sessionData.sessionId;
         currentAppName = sessionData.appName;
-        
+
         setUserId(currentUserId);
         setSessionId(currentSessionId);
         setAppName(currentAppName);
@@ -447,7 +459,8 @@ export default function App() {
 
       // Send the message with retry logic
       const sendMessage = async () => {
-        const response = await fetch("/api/run_sse", {
+        // Use the API_BASE_URL constant here
+        const response = await fetch(`${API_BASE_URL}/run_sse`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -467,7 +480,7 @@ export default function App() {
         if (!response.ok) {
           throw new Error(`Failed to send message: ${response.status} ${response.statusText}`);
         }
-        
+
         return response;
       };
 
@@ -476,7 +489,7 @@ export default function App() {
       // Handle SSE streaming
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
-      let lineBuffer = ""; 
+      let lineBuffer = "";
       let eventDataBuffer = "";
 
       if (reader) {
@@ -487,7 +500,7 @@ export default function App() {
           if (value) {
             lineBuffer += decoder.decode(value, { stream: true });
           }
-          
+
           let eolIndex;
           // Process all complete lines in the buffer, or the remaining buffer if 'done'
           while ((eolIndex = lineBuffer.indexOf('\n')) >= 0 || (done && lineBuffer.length > 0)) {
@@ -535,10 +548,10 @@ export default function App() {
       console.error("Error:", error);
       // Update the AI message placeholder with an error message
       const aiMessageId = Date.now().toString() + "_ai_error";
-      setMessages(prev => [...prev, { 
-        type: "ai", 
-        content: `Sorry, there was an error processing your request: ${error instanceof Error ? error.message : 'Unknown error'}`, 
-        id: aiMessageId 
+      setMessages(prev => [...prev, {
+        type: "ai",
+        content: `Sorry, there was an error processing your request: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        id: aiMessageId
       }]);
       setIsLoading(false);
     }
@@ -558,11 +571,11 @@ export default function App() {
   useEffect(() => {
     const checkBackend = async () => {
       setIsCheckingBackend(true);
-      
+
       // Check if backend is ready with retry logic
       const maxAttempts = 60; // 2 minutes with 2-second intervals
       let attempts = 0;
-      
+
       while (attempts < maxAttempts) {
         const isReady = await checkBackendHealth();
         if (isReady) {
@@ -570,16 +583,16 @@ export default function App() {
           setIsCheckingBackend(false);
           return;
         }
-        
+
         attempts++;
         await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds between checks
       }
-      
+
       // If we get here, backend didn't come up in time
       setIsCheckingBackend(false);
       console.error("Backend failed to start within 2 minutes");
     };
-    
+
     checkBackend();
   }, []);
 
@@ -606,22 +619,22 @@ export default function App() {
   const BackendLoadingScreen = () => (
     <div className="flex-1 flex flex-col items-center justify-center p-4 overflow-hidden relative">
       <div className="w-full max-w-2xl z-10
-                      bg-neutral-900/50 backdrop-blur-md 
-                      p-8 rounded-2xl border border-neutral-700 
+                      bg-neutral-900/50 backdrop-blur-md
+                      p-8 rounded-2xl border border-neutral-700
                       shadow-2xl shadow-black/60">
-        
+
         <div className="text-center space-y-6">
           <h1 className="text-4xl font-bold text-white flex items-center justify-center gap-3">
             ✨ Tiny Tastes - Baby Recipe Planner 🍲
           </h1>
-          
+
           <div className="flex flex-col items-center space-y-4">
             {/* Spinning animation */}
             <div className="relative">
               <div className="w-16 h-16 border-4 border-neutral-600 border-t-blue-500 rounded-full animate-spin"></div>
               <div className="absolute inset-0 w-16 h-16 border-4 border-transparent border-r-purple-500 rounded-full animate-spin" style={{animationDirection: 'reverse', animationDuration: '1.5s'}}></div>
             </div>
-            
+
             <div className="space-y-2">
               <p className="text-xl text-neutral-300">
                 Waiting for backend to be ready...
@@ -630,7 +643,7 @@ export default function App() {
                 This may take a moment on first startup
               </p>
             </div>
-            
+
             {/* Animated dots */}
             <div className="flex space-x-1">
               <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0ms'}}></div>
@@ -656,8 +669,8 @@ export default function App() {
                 <p className="text-neutral-300">
                   Unable to connect to backend services at localhost:8000
                 </p>
-                <button 
-                  onClick={() => window.location.reload()} 
+                <button
+                  onClick={() => window.location.reload()}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
                 >
                   Retry

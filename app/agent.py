@@ -1,5 +1,6 @@
 import datetime
 import logging
+import re
 from collections.abc import AsyncGenerator
 from typing import Literal
 
@@ -13,7 +14,8 @@ from google.genai import types as genai_types
 from google.adk.tools.agent_tool import AgentTool
 from pydantic import BaseModel, Field
 
-from .config import config
+from app.image_utils import generate_ingredient_image
+from app.config import config
 
 import os
 # Disable OpenTelemetry to avoid context management issues with incompatible GCP exporter
@@ -243,24 +245,98 @@ recipe_refiner_agent = LlmAgent(
 )
 
 
+def get_ingredient_image(ingredient_name: str) -> dict:
+    """Fetches a representative image for a culinary ingredient.
+
+    This tool takes the name of an ingredient and returns its image as a
+    base64 encoded string, which can be directly embedded in markdown.
+
+    Args:
+        ingredient_name (str): The name of the ingredient to get an image for (e.g., "avocado", "banana").
+
+    Returns:
+        dict: A dictionary containing the operation status and image data.
+              - On success: {"status": "success", "image_b64": "<base64_string>"}
+              - On failure: {"status": "error", "message": "Failed to generate image."}
+    """
+    if not ingredient_name:
+        return {"status": "error", "message": "Ingredient name cannot be empty."}
+
+    # Generate the image using a separate function/service
+    image_b64 = generate_ingredient_image(ingredient_name)
+
+    if image_b64:
+        return {"status": "success", "image_b64": image_b64}
+
+    return {"status": "error", "message": "Failed to generate image."}
+
+
+class ImageEmbeddingAgent(BaseAgent):
+    """
+    A non-LLM agent that takes a markdown string with image placeholders
+    and replaces them with actual base64 encoded images.
+    """
+    def __init__(self, name: str):
+        super().__init__(name=name)
+
+    async def _run_async_impl(
+            self, ctx: InvocationContext
+    ) -> AsyncGenerator[Event, None]:
+        logging.info(f"[{self.name}] Starting image embedding process.")
+        markdown_template = ctx.session.state.get("final_recipe_report")
+
+        if not markdown_template:
+            logging.warning(f"[{self.name}] No 'final_recipe_report' found in state. Skipping.")
+            yield Event(author=self.name)
+            return
+
+        final_markdown = markdown_template
+        placeholders = re.findall(r'\[IMAGE_FOR:(.*?)\]', markdown_template)
+        logging.info(f"[{self.name}] Found placeholders for: {placeholders}")
+
+        for ingredient_name in placeholders:
+            placeholder_tag = f"[IMAGE_FOR:{ingredient_name}]"
+            logging.info(f"[{self.name}] Processing ingredient: {ingredient_name}")
+            image_data = get_ingredient_image(ingredient_name)
+
+            if image_data and image_data.get("status") == "success":
+                image_b64 = image_data.get("image_b64")
+                markdown_image_tag = f'![{ingredient_name}](data:image/png;base64,{image_b64})'
+                final_markdown = final_markdown.replace(placeholder_tag, markdown_image_tag)
+                logging.info(f"[{self.name}] Successfully replaced placeholder for {ingredient_name}.")
+            else:
+                final_markdown = final_markdown.replace(placeholder_tag, f"*{ingredient_name} (image not available)*")
+                logging.warning(f"[{self.name}] Could not generate image for {ingredient_name}. Replacing with text.")
+
+        yield Event(
+            author=self.name,
+            actions=EventActions(
+                state_delta={"final_recipe_report": final_markdown}
+            ),
+        )
+
 final_recipe_presenter_agent = LlmAgent(
     model=config.critic_model,
     name="final_recipe_presenter_agent",
-    include_contents="none",
-    description="Formats the final, approved recipe into a detailed, user-friendly markdown report.",
+    # The tool is no longer needed here
+    description="Formats the final recipe into a user-friendly markdown report.",
     instruction="""
-    You are a food blogger who specializes in creating beautiful and informative recipe cards for parents.
+    You are a food blogger creating beautiful recipe cards for parents.
     Your task is to take the final, approved recipe data from the 'current_recipe' state key and format it into a clear and appealing markdown report.
+
+    **CRITICAL INSTRUCTION: IMAGE PLACEHOLDERS**
+    For EVERY ingredient in the recipe's ingredient list, you MUST NOT generate an image. Instead, you MUST insert a special placeholder tag in the format: [IMAGE_FOR:<ingredient_name>]
+    For example, for '1 cup of mashed bananas', you would write: `* 1 cup of mashed bananas [IMAGE_FOR:bananas]`
 
     **REPORT STRUCTURE:**
     -   Start with the recipe `title` as a main heading (`#`).
     -   Include the `description` and `age_appropriateness`.
-    -   Use a sub-heading (`##`) for "Ingredients" and list them.
+    -   Use a sub-heading (`##`) for "Ingredients". For each item, list the ingredient and its corresponding placeholder tag.
     -   Use a sub-heading (`##`) for "Instructions" and list the steps.
-    -   Add a "Nutrition Notes" section (`##`) with a brief, helpful summary of the recipe's health benefits for a baby.
-    -   Add a "Safety First!" section (`##`) with a bullet point reminding parents to ensure the texture is appropriate for their baby's age to prevent choking.
+    -   Add a "Nutrition Notes" section (`##`) with a helpful summary of the recipe's health benefits for a baby.
+    -   Add a "Safety First!" section (`##`) with a reminder about appropriate food texture.
 
-    Your output should be a single, well-formatted markdown document.
+    Your final output must be a single, well-formatted markdown document containing the placeholders.
     """,
     output_key="final_recipe_report",
 )
@@ -279,6 +355,7 @@ recipe_creation_pipeline = SequentialAgent(
             ],
         ),
         final_recipe_presenter_agent,
+        ImageEmbeddingAgent(name="image_embedding_agent"),
     ],
 )
 

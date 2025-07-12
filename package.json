@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "rehype-raw": "^7.0.0"
+  }
+}

@@ -33,37 +33,24 @@ def generate_ingredient_image(ingredient_name: str) -> str | None:
         A base64 encoded string of the generated image (PNG format),
         or None if image generation fails or no image is returned.
     """
-    try:
-        client = genai.Client() # Initialize client here to pick up config
-        model = client.models.get(
-            "gemini-2.0-flash-preview-image-generation"
-        ) # More explicit model fetching
-    except Exception as e:
-        logging.error(f"Failed to initialize Gemini client or model: {e}")
-        return None
 
     prompt = (
         f"Generate a clear, vibrant, photorealistic image of a single {ingredient_name}, "
-        "on a clean, plain white background. The ingredient should be the main focus. "
-        "The image should be suitable as an icon in a recipe app."
+        "on a transparent background. The ingredient should be the sole focus, with no shadows. "
+        "The final image must be a PNG with a transparent alpha channel, suitable as an icon in a recipe app."
     )
 
     logging.info(f"Generating image for: {ingredient_name} with prompt: {prompt}")
 
     try:
-        response = model.generate_content(
+        client = genai.Client()
+        # Removed the `generation_config` with the unsupported `response_modalities`
+        response = client.models.generate_content(
+            model="gemini-2.0-flash-preview-image-generation",
             contents=prompt,
-            generation_config=types.GenerationConfig(
-                response_modalities=["TEXT", "IMAGE"]
+            config=types.GenerateContentConfig(
+                response_modalities=["Text", "Image"]
             ),
-            # It's good practice to add safety settings,
-            # though defaults are usually reasonable.
-            # safety_settings=[
-            #     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-            #     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-            #     {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            #     {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-            # ]
         )
 
         image_bytes = None
@@ -105,8 +92,8 @@ if __name__ == '__main__':
         if b64_image:
             print(f"Got base64 image for {item} (first 50 chars): {b64_image[:50]}...")
             # To save and view:
-            # with open(f"{item.replace(' ', '_')}.png", "wb") as f:
-            #     f.write(base64.b64decode(b64_image))
+            with open(f"{item.replace(' ', '_')}.png", "wb") as f:
+                f.write(base64.b64decode(b64_image))
             # print(f"Saved {item.replace(' ', '_')}.png")
         else:
             print(f"Failed to get image for {item}")
