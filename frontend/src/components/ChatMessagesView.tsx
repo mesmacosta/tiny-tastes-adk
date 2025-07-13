@@ -1,4 +1,4 @@
-import type React from "react";
+import React from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, Copy, CopyCheck } from "lucide-react";
 import { InputForm } from "@/components/InputForm";
@@ -31,22 +31,50 @@ const urlTransform = (url: string) => {
   return newUrl.href;
 };
 
+const processChildren = (nodes: React.ReactNode): React.ReactNode => {
+    if (!nodes) {
+        return null;
+    }
+    return React.Children.map(nodes, (child) => {
+        if (typeof child === "string") {
+            if (child.includes("[LOADING_SPINNER]")) {
+                return child.split(/(\[LOADING_SPINNER\])/).map((part, index) => {
+                    if (part === "[LOADING_SPINNER]") {
+                        return <Loader2 key={index} className="h-4 w-4 animate-spin inline-block ml-2" />;
+                    }
+                    return part;
+                });
+            }
+        }
+        if (React.isValidElement(child) && child.props.children) {
+            return React.cloneElement(child, {
+                ...child.props,
+                children: processChildren(child.props.children),
+            });
+        }
+        return child;
+    });
+}
+
 // Markdown components (from former ReportView.tsx)
 const mdComponents = {
-    // It ensures the 'src' attribute, with its base64 data, is always passed through.
+  // It ensures the 'src' attribute, with its base64 data, is always passed through.
   img: ({ node, ...props }: MdComponentProps) => {
     // This custom renderer directly accesses the `src` from the parsed markdown 'node'
     // This is the most robust way to ensure the base64 data is never stripped out.
-    const imageSource = node?.properties?.src || '';
-    const altText = node?.properties?.alt || '';
+    const imageSource = node?.properties?.src || "";
+    const altText = node?.properties?.alt || "";
 
     return (
       <img
         {...props}
         src={imageSource}
         alt={altText}
-        style={{ backgroundBlendMode: 'multiply' }} // This is the key change
-        className={cn("inline-block h-6 w-6 ml-2 bg-transparent", props.className)}
+        style={{ backgroundBlendMode: "multiply" }} // This is the key change
+        className={cn(
+          "inline-block h-6 w-6 ml-2 bg-transparent",
+          props.className
+        )}
       />
     );
   },
@@ -67,7 +95,7 @@ const mdComponents = {
   ),
   p: ({ className, children, ...props }: MdComponentProps) => (
     <p className={cn("mb-3 leading-7", className)} {...props}>
-      {children}
+      {processChildren(children)}
     </p>
   ),
   a: ({ className, children, href, ...props }: MdComponentProps) => (
@@ -94,8 +122,8 @@ const mdComponents = {
     </ol>
   ),
   li: ({ className, children, ...props }: MdComponentProps) => (
-    <li className={cn("mb-1 flex items-center", className)} {...props}> {/* Added flex for alignment */}
-      {children}
+    <li className={cn("mb-1 flex items-center", className)} {...props}>
+      {processChildren(children)}
     </li>
   ),
   blockquote: ({ className, children, ...props }: MdComponentProps) => (

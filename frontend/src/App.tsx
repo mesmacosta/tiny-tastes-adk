@@ -372,22 +372,26 @@ export default function App() {
       if ((agent === "final_recipe_presenter_agent" || agent === "image_embedding_agent") && typeof finalReportContent === 'string') {
         console.log(agent);
         console.log('[SSE HANDLER] Final recipe report received from final_recipe_presenter_agent.');
-        console.log(finalReportContent);
+        const finalReportContentWithPlaceholders = finalReportContent.replace(
+          /\[IMAGE_FOR:(.*?)]/g,
+          "[LOADING_SPINNER]"
+        );
+        console.log(finalReportContentWithPlaceholders);
         setMessages(prev =>
           prev.map(msg =>
             // Find the AI placeholder message by its original ID
             msg.id === aiMessageId
               ? { // If this is the message, return a new object with updated content
                   ...msg,
-                  content: finalReportContent as string,
+                  content: finalReportContentWithPlaceholders as string,
                   agent: agent, // Update the agent name to the current one
-                  finalReportContent: finalReportContent, // Store the final content
+                  finalReportContent: finalReportContentWithPlaceholders, // Store the final content
                 }
               : msg // Otherwise, return the message unchanged
           )
         );
 
-        setDisplayData(finalReportContent as string);
+        setDisplayData(finalReportContentWithPlaceholders as string);
       } else if (agent === "report_composer_with_citations" && typeof finalReportContent === 'boolean' && finalReportContent === true) {
         // This case handles the old boolean `final_report_with_citations`.
         // However, the content for the message is not directly available in `finalReportContent` if it's just a boolean.
