@@ -23,7 +23,8 @@ from opentelemetry.sdk.trace import TracerProvider, export
 
 from app.utils.gcs import create_bucket_if_not_exists
 from app.utils.tracing import CloudTraceLoggingSpanExporter
-from app.utils.typing import Feedback
+from app.utils.typing import Feedback, TranslateRequest
+from app.translation_utils import translate_text
 
 _, project_id = google.auth.default()
 logging_client = google_cloud_logging.Client()
@@ -69,6 +70,20 @@ def collect_feedback(feedback: Feedback) -> dict[str, str]:
     """
     logger.log_struct(feedback.model_dump(), severity="INFO")
     return {"status": "success"}
+
+
+@app.post("/translate")
+def translate(request: TranslateRequest) -> dict[str, str]:
+    """Translate text to Brazilian Portuguese.
+
+    Args:
+        request: The request data with text to translate.
+
+    Returns:
+        The translated text.
+    """
+    translated_text = translate_text(request.text, "pt-BR")
+    return {"translated_text": translated_text}
 
 
 # Main execution

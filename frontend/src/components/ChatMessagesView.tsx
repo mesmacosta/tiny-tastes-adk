@@ -235,6 +235,28 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
   websiteCount,
   isLoading,
 }) => {
+  const [translatedContent, setTranslatedContent] = useState<string | null>(null);
+  const [isTranslating, setIsTranslating] = useState(false);
+
+  const handleTranslate = async () => {
+    setIsTranslating(true);
+    try {
+      const response = await fetch("/translate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text: message.content }),
+      });
+      const data = await response.json();
+      setTranslatedContent(data.translated_text);
+    } catch (error) {
+      console.error("Failed to translate:", error);
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
   // Show ActivityTimeline if we have processedEvents (this will be the first AI message)
   const shouldShowTimeline = processedEvents.length > 0;
   
@@ -268,19 +290,32 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
         <div className="flex items-start gap-3">
           <div className="flex-1">
             <ReactMarkdown components={mdComponents} rehypePlugins={[rehypeRaw]} urlTransform={urlTransform}>
-              {message.content}
+              {translatedContent || message.content}
             </ReactMarkdown>
           </div>
-          <button
-            onClick={() => handleCopy(message.content, message.id)}
-            className="p-1 hover:bg-neutral-700 rounded"
-          >
-            {copiedMessageId === message.id ? (
-              <CopyCheck className="h-4 w-4 text-green-500" />
-            ) : (
-              <Copy className="h-4 w-4 text-neutral-400" />
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => handleCopy(translatedContent || message.content, message.id)}
+              className="p-1 hover:bg-neutral-700 rounded"
+            >
+              {copiedMessageId === message.id ? (
+                <CopyCheck className="h-4 w-4 text-green-500" />
+              ) : (
+                <Copy className="h-4 w-4 text-neutral-400" />
+              )}
+            </button>
+            {isFinalReport && (
+              <Button
+                onClick={handleTranslate}
+                disabled={isTranslating}
+                size="sm"
+                variant="outline"
+                className="text-xs"
+              >
+                {isTranslating ? "Translating..." : "Translate to Portuguese"}
+              </Button>
             )}
-          </button>
+          </div>
         </div>
       </div>
     );

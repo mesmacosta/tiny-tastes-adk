@@ -16,6 +16,8 @@ from pydantic import BaseModel, Field
 
 from app.image_utils import generate_ingredient_image
 from app.config import config
+from app.translation_utils import translate_text
+
 
 import os
 # Disable OpenTelemetry to avoid context management issues with incompatible GCP exporter
@@ -382,6 +384,49 @@ interactive_recipe_agent = LlmAgent(
     sub_agents=[recipe_creation_pipeline],
     tools=[AgentTool(recipe_generator)],
     output_key="initial_recipe",
+)
+
+class TranslationAgent(BaseAgent):
+    """
+    A non-LLM agent that takes a markdown string with image placeholders
+    and replaces them with actual base64 encoded images.
+    """
+
+    def __init__(self, name: str):
+        super().__init__(name=name)
+
+    async def _run_async_impl(
+        self, ctx: InvocationContext
+    ) -> AsyncGenerator[Event, None]:
+        logging.info(f"[{self.name}] Starting translation process.")
+        markdown_template = ctx.session.state.get("final_recipe_report")
+
+        if not markdown_template:
+            logging.warning(
+                f"[{self.name}] No 'final_recipe_report' found in state. Skipping."
+            )
+            yield Event(author=self.name)
+            return
+
+        translated_markdown = translate_text(
+            text=markdown_template, target_language="pt-BR"
+        )
+        logging.info(f"[{self.name}] Successfully translated report.")
+
+        yield Event(
+            author=self.name,
+            actions=EventActions(
+                state_delta={"final_recipe_report": translated_markdown}
+            ),
+        )
+
+
+translate_recipe_agent = SequentialAgent(
+    name="translate_recipe_agent",
+    description="Translates the final recipe report to Brazilian Portuguese.",
+    sub_agents=[
+        TranslationAgent(name="translation_agent"),
+    ],
 )
 
 root_agent = interactive_recipe_agent
