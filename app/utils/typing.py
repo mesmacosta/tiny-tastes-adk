@@ -35,6 +35,12 @@ class Request(BaseModel):
     model_config = {"extra": "allow"}
 
 
+class TranslateRequest(BaseModel):
+    """Represents the input for a translation request."""
+
+    text: str
+
+
 class Feedback(BaseModel):
     """Represents feedback for a conversation."""
 
