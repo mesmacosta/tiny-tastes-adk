@@ -292,6 +292,19 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
             <ReactMarkdown components={mdComponents} rehypePlugins={[rehypeRaw]} urlTransform={urlTransform}>
               {translatedContent || message.content}
             </ReactMarkdown>
+            {isFinalReport && (
+              <div className="flex justify-end mt-2">
+                <Button
+                  onClick={handleTranslate}
+                  disabled={isTranslating}
+                  size="sm"
+                  variant="outline"
+                  className="text-xs bg-neutral-800 text-white"
+                >
+                  {isTranslating ? "Translating..." : "Translate to Portuguese"}
+                </Button>
+              </div>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <button
@@ -304,17 +317,6 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
                 <Copy className="h-4 w-4 text-neutral-400" />
               )}
             </button>
-            {isFinalReport && (
-              <Button
-                onClick={handleTranslate}
-                disabled={isTranslating}
-                size="sm"
-                variant="outline"
-                className="text-xs"
-              >
-                {isTranslating ? "Translating..." : "Translate to Portuguese"}
-              </Button>
-            )}
           </div>
         </div>
       </div>
