@@ -9,6 +9,7 @@ import { cn } from "@/utils";
 import { Badge } from "@/components/ui/badge";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import rehypeRaw from "rehype-raw";
+import { API_BASE_URL } from "@/components/constants";
 
 // Markdown component props type from former ReportView
 type MdComponentProps = {
@@ -241,7 +242,7 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
   const handleTranslate = async () => {
     setIsTranslating(true);
     try {
-      const response = await fetch("/translate", {
+      const response = await fetch(`${API_BASE_URL}/translate`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -266,11 +267,12 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
   // The new agent ('final_recipe_presenter_agent') will provide a string.
   // The old agent ('report_composer_with_citations') might set a boolean.
   const isFinalReport = (typeof finalReportContent === 'string' && finalReportContent.length > 0) ||
-                        (typeof finalReportContent === 'boolean' && finalReportContent === true);
+                        (typeof finalReportContent === 'boolean' && finalReportContent);
 
   const shouldDisplayDirectly = 
     agent === "interactive_recipe_agent" || // Changed from interactive_planner_agent
     (agent === "final_recipe_presenter_agent" && isFinalReport) || // New final report agent
+    (agent === "image_embedding_agent" && isFinalReport) ||
     (agent === "report_composer_with_citations" && isFinalReport); // Old final report agent
   
   if (shouldDisplayDirectly) {
@@ -292,6 +294,19 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
             <ReactMarkdown components={mdComponents} rehypePlugins={[rehypeRaw]} urlTransform={urlTransform}>
               {translatedContent || message.content}
             </ReactMarkdown>
+            {isFinalReport && (
+              <div className="flex justify-end mt-2">
+                <Button
+                  onClick={handleTranslate}
+                  disabled={isTranslating}
+                  size="sm"
+                  variant="outline"
+                  className="text-xs bg-neutral-800 text-white"
+                >
+                  {isTranslating ? "Translating..." : "Translate to Portuguese"}
+                </Button>
+              </div>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <button
@@ -304,17 +319,6 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
                 <Copy className="h-4 w-4 text-neutral-400" />
               )}
             </button>
-            {isFinalReport && (
-              <Button
-                onClick={handleTranslate}
-                disabled={isTranslating}
-                size="sm"
-                variant="outline"
-                className="text-xs"
-              >
-                {isTranslating ? "Translating..." : "Translate to Portuguese"}
-              </Button>
-            )}
           </div>
         </div>
       </div>

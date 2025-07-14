@@ -2,10 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { v4 as uuidv4 } from 'uuid';
 import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { ChatMessagesView } from "@/components/ChatMessagesView";
-
-// This is the new constant that reads from your environment variables
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
-// const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://tiny-tastes-adk-prod-44603466838.us-central1.run.app';
+import { API_BASE_URL } from "@/components/constants";
 
 
 // Update DisplayData to be a string type
@@ -392,7 +389,7 @@ export default function App() {
         );
 
         setDisplayData(finalReportContentWithPlaceholders as string);
-      } else if (agent === "report_composer_with_citations" && typeof finalReportContent === 'boolean' && finalReportContent === true) {
+      } else if (agent === "report_composer_with_citations" && typeof finalReportContent === 'boolean' && finalReportContent) {
         // This case handles the old boolean `final_report_with_citations`.
         // However, the content for the message is not directly available in `finalReportContent` if it's just a boolean.
         // The old code used `finalReportWithCitations as string` which was problematic.
