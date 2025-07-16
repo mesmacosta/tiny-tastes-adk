@@ -170,6 +170,12 @@ const mdComponents = {
       </table>
     </div>
   ),
+  video: ({ className, src, ...props }: MdComponentProps) => (
+    <video className={cn("w-full", className)} controls {...props}>
+      <source src={src} type="video/mp4" />
+      Your browser does not support the video tag.
+    </video>
+  ),
   th: ({ className, children, ...props }: MdComponentProps) => (
     <th
       className={cn(
@@ -213,7 +219,7 @@ const HumanMessageBubble: React.FC<HumanMessageBubbleProps> = ({
 
 // Props for AiMessageBubble
 interface AiMessageBubbleProps {
-  message: { content: string; id: string };
+  message: { content: string; id: string; video?: string };
   mdComponents: typeof mdComponents;
   handleCopy: (text: string, messageId: string) => void;
   copiedMessageId: string | null;
@@ -282,7 +288,7 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
         {/* Show timeline for interactive_planner_agent if available */}
         {shouldShowTimeline && agent === "interactive_planner_agent" && (
           <div className="w-full mb-2">
-            <ActivityTimeline 
+            <ActivityTimeline
               processedEvents={processedEvents}
               isLoading={isLoading}
               websiteCount={websiteCount}
@@ -294,6 +300,12 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
             <ReactMarkdown components={mdComponents} rehypePlugins={[rehypeRaw]} urlTransform={urlTransform}>
               {translatedContent || message.content}
             </ReactMarkdown>
+            {message.video && (
+              <video className="w-full" controls>
+                <source src={message.video} type="video/mp4" />
+                Your browser does not support the video tag.
+              </video>
+            )}
             {isFinalReport && (
               <div className="flex justify-end mt-2">
                 <Button
@@ -383,7 +395,7 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
 };
 
 interface ChatMessagesViewProps {
-  messages: { type: "human" | "ai"; content: string; id: string; agent?: string; finalReportContent?: string | boolean }[]; // Updated here
+  messages: { type: "human" | "ai"; content: string; id: string; agent?: string; finalReportContent?: string | boolean; video?: string }[]; // Updated here
   isLoading: boolean;
   scrollAreaRef: React.RefObject<HTMLDivElement | null>;
   onSubmit: (query: string) => void;

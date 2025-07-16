@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from app.image_utils import generate_ingredient_image
 from app.config import config
 from app.translation_utils import translate_text
+from app.video_agent import VideoGeneratorAgent
 
 
 import os
@@ -358,6 +359,7 @@ recipe_creation_pipeline = SequentialAgent(
         ),
         final_recipe_presenter_agent,
         ImageEmbeddingAgent(name="image_embedding_agent"),
+        VideoGeneratorAgent(name="video_generator_agent"),
     ],
 )
 
