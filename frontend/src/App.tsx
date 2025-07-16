@@ -15,6 +15,7 @@ interface MessageWithAgent {
   id: string;
   agent?: string;
   finalReportContent?: string | boolean; // boolean for old logic, string for new
+  video?: string;
 }
 
 interface AgentMessage {
@@ -135,6 +136,7 @@ export default function App() {
       let functionResponse = null;
       let sources = null;
       let pediatricianEvaluation = null; // For structured extraction if desired later
+      let video: string | undefined = undefined;
 
       // Check if content.parts exists and has text
       if (parsed.content && parsed.content.parts) {
@@ -197,14 +199,19 @@ export default function App() {
         console.log('[SSE EXTRACT] Sources found:', sources); // DEBUG
       }
 
+      if (parsed.actions?.stateDelta?.final_video) {
+        video = parsed.actions.stateDelta.final_video as string;
+        console.log('[SSE EXTRACT] final_video found:', video.substring(0,100));
+      }
+
       // Return finalReportContent instead of finalReportWithCitations
-      return { textParts, agent, finalReportContent, functionCall, functionResponse, sourceCount, sources, pediatricianEvaluation };
+      return { textParts, agent, finalReportContent, functionCall, functionResponse, sourceCount, sources, pediatricianEvaluation, video };
     } catch (error) {
       // Log the error and a truncated version of the problematic data for easier debugging.
       const truncatedData = data.length > 200 ? data.substring(0, 200) + "..." : data;
       console.error('Error parsing SSE data. Raw data (truncated): "', truncatedData, '". Error details:', error);
       // Update default return for finalReportContent
-      return { textParts: [], agent: '', finalReportContent: undefined, functionCall: null, functionResponse: null, sourceCount: 0, sources: null, pediatricianEvaluation: null };
+      return { textParts: [], agent: '', finalReportContent: undefined, functionCall: null, functionResponse: null, sourceCount: 0, sources: null, pediatricianEvaluation: null, video: undefined };
     }
   };
 
@@ -247,6 +254,8 @@ export default function App() {
         return "Tiny Tastes Assistant";
       case "recipe_creation_pipeline": // This is a sequential agent
         return "Recipe Creation In Progress";
+      case "video_generator_agent":
+        return "Generating Video";
       default:
         return `Processing (${agentName || 'Unknown Agent'})`;
     }
@@ -261,7 +270,7 @@ export default function App() {
     // sourceCount: from actions.stateDelta.url_to_short_id (used by old research agents)
     // sources: from actions.stateDelta.sources (used by old research agents)
     // pediatricianEvaluation: from actions.stateDelta.pediatrician_evaluation
-    const { textParts, agent, finalReportContent, functionCall, functionResponse, sourceCount, sources, pediatricianEvaluation } = extractDataFromSSE(jsonData);
+    const { textParts, agent, finalReportContent, functionCall, functionResponse, sourceCount, sources, pediatricianEvaluation, video } = extractDataFromSSE(jsonData);
 
     // The new agent.py structure:
     // `interactive_recipe_agent` (root) -> text updates the main AI message. It calls:
@@ -366,7 +375,7 @@ export default function App() {
 
     // Handle final report content (could be new recipe string or old boolean)
     if (finalReportContent) {
-      if ((agent === "final_recipe_presenter_agent" || agent === "image_embedding_agent") && typeof finalReportContent === 'string') {
+      if ((agent === "final_recipe_presenter_agent" || agent === "image_embedding_agent" || agent === "video_generator_agent") && typeof finalReportContent === 'string') {
         console.log(agent);
         console.log('[SSE HANDLER] Final recipe report received from final_recipe_presenter_agent.');
         const finalReportContentWithPlaceholders = finalReportContent.replace(
@@ -383,6 +392,7 @@ export default function App() {
                   content: finalReportContentWithPlaceholders as string,
                   agent: agent, // Update the agent name to the current one
                   finalReportContent: finalReportContentWithPlaceholders, // Store the final content
+                  video: video,
                 }
               : msg // Otherwise, return the message unchanged
           )
