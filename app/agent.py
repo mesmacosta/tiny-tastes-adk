@@ -169,9 +169,9 @@ def collect_research_sources_callback(callback_context: CallbackContext) -> None
 recipe_generator = LlmAgent(
     model=config.worker_model,
     name="recipe_generator",
-    description="Generates a creative and simple toddler food recipe for a child aged 6+ months, either from a list of ingredients or from a direct recipe name.",
+    description="Generates a creative and simple toddler food recipe for a child aged 1+ year, either from a list of ingredients or from a direct recipe name.",
     instruction="""
-    You are a creative chef specializing in recipes for toddlers. Your task is to create a simple, single-serving recipe suitable for a child aged 6+ months.
+    You are a creative chef specializing in recipes for toddlers. Your task is to create a simple, single-serving recipe suitable for a child aged 1+ year.
 
     You will receive one of two inputs:
     1.  A list of one or more ingredients.
@@ -180,12 +180,12 @@ recipe_generator = LlmAgent(
     **TASK:**
     - If given a list of ingredients, invent a creative and simple recipe using them.
     - If given the name of a recipe, provide a simple version of that recipe.
-    - All recipes should be tailored for a toddler aged 6+ months, focusing on soft textures, small pieces, and avoiding common choking hazards.
+    - All recipes should be tailored for a toddler aged 1+ year, focusing on soft textures, small pieces, and avoiding common choking hazards.
 
     **RULES:**
     1.  Your output MUST be a valid JSON object that conforms to the `Recipe` schema.
     2.  The recipe must be simple, with clear instructions suitable for a beginner cook.
-    3.  The `age_range` field in your output MUST be set to "6+ months".
+    3.  The `age_range` field in your output MUST be set to "1+ year".
     """,
     tools=[google_search],
     output_key="current_recipe",

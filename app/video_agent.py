@@ -1,12 +1,22 @@
+import asyncio
 import logging
-import time
-from collections.abc import AsyncGenerator
+import re
+from datetime import datetime, timedelta
+from typing import AsyncGenerator
+from urllib.parse import urlparse
 
+import google.auth
 from google.adk.agents import BaseAgent
+from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event, EventActions
-from google.adk.invocation_context import InvocationContext
-import google.generativeai as genai
-from google.generativeai import types
+from google.auth.transport import requests
+from google.cloud import storage
+from google import genai
+from google.genai import types
+
+
+OUTPUT_GCS_PREFIX = "gs://tiny-tastes-generated/generated-videos/"
+
 
 class VideoGeneratorAgent(BaseAgent):
     """
@@ -29,58 +39,193 @@ class VideoGeneratorAgent(BaseAgent):
             yield Event(author=self.name)
             return
 
-        video_prompt = f"A video about the following recipe: {final_recipe_report}"
+        # --- NEW LOGIC to remove base64 images ---
+        # Define a regex to find markdown-style base64 images.
+        base64_image_regex = re.compile(r'!\[.*?\]\(data:image\/[a-zA-Z]+;base64,.*?\)')
 
-        generation_config = types.GenerateVideosConfig(
-            person_generation="dont_allow",
-            aspect_ratio="16:9",
-            duration_seconds=8,
-            number_of_videos=1,
+        # Replace any found base64 image tags with a descriptive placeholder text.
+        cleaned_recipe_report = re.sub(
+            base64_image_regex,
+            "[Image showing this step of the recipe]",
+            final_recipe_report
         )
+        if cleaned_recipe_report != final_recipe_report:
+            logging.info("Removed base64 image tags from recipe report before video generation.")
+        # --- End of new logic ---
 
-        logging.info(f"Initializing video generation for prompt: '{video_prompt}'")
-
-        try:
-            client = genai.Client()
-            operation = client.generate_videos(
-                model="veo-2.0-generate-001",
-                prompt=video_prompt,
-                config=generation_config,
+        video_uri = await generate_video_from_recipe(cleaned_recipe_report)
+        if video_uri:
+            yield Event(
+                author=self.name,
+                actions=EventActions(
+                    state_delta={"final_video": video_uri}
+                ),
             )
-        except Exception as e:
-            logging.error(f"An error occurred during API call: {e}")
-            yield Event(author=self.name)
             return
 
-        logging.info("Video generation started. This may take 2-3 minutes...")
-        logging.info(f"Operation Name: {operation.operation.name}")
-
-        while not operation.done:
-            logging.info("...Waiting for generation to complete...")
-            time.sleep(20)
-            try:
-                operation = client.operations.get(operation.operation.name)
-            except Exception as e:
-                logging.error(f"An error occurred while polling for status: {e}")
-                break
-
-        if operation.done and not operation.error:
-            logging.info("Generation complete!")
-            response = operation.result()
-
-            for i, video in enumerate(response.generated_videos):
-                video_url = video.video.uri
-                yield Event(
-                    author=self.name,
-                    actions=EventActions(
-                        state_delta={"final_video": video_url}
-                    ),
-                )
-                return
-
-        elif operation.error:
-            logging.error(f"Video generation failed with an error: {operation.error.message}")
-        else:
-            logging.error("Operation did not complete successfully.")
-
         yield Event(author=self.name)
+
+
+# --- NEW, SIMPLER HELPER FUNCTION ---
+def create_signed_url_for_gcs_object(
+        gcs_uri: str
+) -> str | None:
+    """
+    Generates a time-limited signed URL for a given GCS object URI.
+
+    Args:
+        gcs_uri: The full GCS URI of the object (e.g., "gs://bucket-name/path/to/video.mp4").
+        expiration_minutes: The duration in minutes for which the URL will be valid.
+
+    Returns:
+        A signed URL as a string, or None if an error occurred.
+    """
+    try:
+
+        credentials, project_id = google.auth.default()
+
+        # Perform a refresh request to get the access token of the current credentials (Else, it's None)
+        r = requests.Request()
+        credentials.refresh(r)
+
+        # 1. Parse the GCS URI to get the bucket and blob names
+        parsed_uri = urlparse(gcs_uri)
+        bucket_name = parsed_uri.netloc
+        blob_name = parsed_uri.path.lstrip("/")
+
+        # 2. Set up GCS client and get the blob
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+
+        expires = datetime.now() + timedelta(seconds=86400)
+
+        # In case of user credential use, define manually the service account to use (for development purpose only)
+        service_account_email = "tiny-tastes-gcs-signer@gcp-tutorials-main.iam.gserviceaccount.com"
+        # If you use a service account credential, you can use the embedded email
+        if hasattr(credentials, "service_account_email"):
+            service_account_email = credentials.service_account_email
+
+        signed_url = blob.generate_signed_url(expiration=expires, service_account_email=service_account_email,
+                                       access_token=credentials.token)
+        logging.info(f"Generated signed URL for {gcs_uri}")
+        return signed_url
+
+    except Exception as e:
+        logging.error(f"Failed to create signed URL for {gcs_uri}: {e}")
+        return None
+
+
+# --- AGENT CLASS (No changes needed) ---
+# This class remains the same as it reads configuration from the context.
+
+
+# --- REVISED, SIMPLER VIDEO GENERATION FUNCTION ---
+async def generate_video_from_recipe(
+        recipe_text: str
+) -> str | None:
+    """
+    Generates a video directly to a GCS location and returns a signed URL.
+
+    Args:
+        recipe_text: A string containing the recipe for the video prompt.
+        output_gcs_uri_prefix: The GCS path prefix where the video should be saved
+                               (e.g., "gs://your-bucket/videos/").
+
+    Returns:
+        A signed URL for the generated video if successful, otherwise None.
+    """
+    if not recipe_text:
+        logging.warning("No recipe text provided. Skipping video generation.")
+        return None
+
+    # 1. Create the prompt and configure generation settings
+    video_prompt = f"A cinematic, high-quality video about the following recipe, showing the key steps: {recipe_text}"
+    generation_config = types.GenerateVideosConfig(
+        person_generation="dont_allow",
+        aspect_ratio="16:9",
+        duration_seconds=8,
+        number_of_videos=1,
+        output_gcs_uri=OUTPUT_GCS_PREFIX,  # Instruct the API where to save the file
+    )
+
+    logging.info(f"Initializing video generation for prompt: '{video_prompt[:100]}...'")
+
+    try:
+        # 2. Start the asynchronous generation process
+        client = genai.Client(vertexai=True, project="gcp-tutorials-main", location="us-central1")
+        # --- MODIFICATION: Add the output_gcs_uri parameter ---
+        operation = client.models.generate_videos(
+            model="veo-2.0-generate-001",
+            prompt=video_prompt,
+            config=generation_config,
+        )
+    except Exception as e:
+        logging.error(f"An error occurred during the API call: {e}")
+        return None
+
+    logging.info("Video generation started. This may take 2-3 minutes...")
+    logging.info(f"Operation Name: {operation.name}")
+
+    # 3. Poll for the result (no change here)
+    while not operation.done:
+        await asyncio.sleep(20)
+        logging.info("...Checking operation status...")
+        try:
+            operation = client.operations.get(operation)
+        except Exception as e:
+            logging.error(f"Error while polling for status: {e}")
+            return None
+
+    # 4. Process the final result
+    if operation.done and not operation.error:
+        logging.info("Generation complete!")
+        response = operation.response
+
+        # The response now contains the GCS URI of the saved video
+        for video in response.generated_videos:
+            # --- MODIFICATION START ---
+            # The URI is now a permanent GCS path, not a temporary file handle.
+            final_gcs_uri = video.video.uri
+            logging.info(f"Video successfully generated at: {final_gcs_uri}")
+
+            # Simply create a signed URL for the existing GCS object
+            signed_url = create_signed_url_for_gcs_object(final_gcs_uri)
+            return signed_url
+            # --- MODIFICATION END ---
+        else:
+            logging.warning("Operation completed, but no video was generated.")
+
+    elif operation.error:
+        logging.error(f"Video generation failed with an error: {operation.error}")
+    else:
+        logging.error("Operation did not complete successfully for an unknown reason.")
+
+    return None
+
+
+# --- REVISED Example Usage ---
+async def main():
+    """Main function to run the video generation test."""
+
+    test_recipe = """
+    # Sunshine Smoothie
+    A bright and refreshing smoothie.
+    Ingredients: 1 ripe banana, 1/2 cup mango, 1/2 cup pineapple, 1/4 cup orange juice.
+    Instructions: Blend all ingredients until smooth. Pour and enjoy. Make sure the video shows the final result.
+    """
+
+    print("--- Starting Test Video Generation ---")
+    signed_video_url = await generate_video_from_recipe(test_recipe)
+    print("\n--- Test Complete ---")
+
+    if signed_video_url:
+        print(f"\n✅ Successfully generated video directly to GCS!")
+        print(f"Signed URL (valid for 60 minutes): {signed_video_url}")
+    else:
+        print("\n❌ Video generation failed. Please check the logs for errors.")
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(main())

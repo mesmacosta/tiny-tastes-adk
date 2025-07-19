@@ -11,8 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import logging
 import os
+import sys
 
 import google.auth
 from fastapi import FastAPI
@@ -27,8 +28,12 @@ from app.utils.typing import Feedback, TranslateRequest
 from app.translation_utils import translate_text
 
 _, project_id = google.auth.default()
-logging_client = google_cloud_logging.Client()
-logger = logging_client.logger(__name__)
+logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+
+# logging_client = google_cloud_logging.Client()
+# logging_client.setup_logging(log_level="INFO")
+# logger = logging_client.logger(__name__)
+logger = logging.getLogger(__name__)
 # Define the frontend URL that needs to be allowed
 frontend_url = "https://tiny-tastes-adk-prod-ui-44603466838.us-central1.run.app"
 
@@ -68,7 +73,7 @@ def collect_feedback(feedback: Feedback) -> dict[str, str]:
     Returns:
         Success message
     """
-    logger.log_struct(feedback.model_dump(), severity="INFO")
+    # logger.log_struct(feedback.model_dump(), severity="INFO")
     return {"status": "success"}
 
 

@@ -9,11 +9,12 @@ dependencies = [
     "google-adk~=1.4.2",
     "opentelemetry-exporter-gcp-trace~=1.9.0",
     "google-cloud-logging~=3.11.4",
-    "google-cloud-aiplatform[evaluation]~=1.99.0",
-    "google-generativeai~=0.7.2",
+    "google-cloud-aiplatform~=1.99.0",
+    "google-genai~=1.26.0",
     "fastapi~=0.115.8",
     "uvicorn~=0.34.0",
-    "google-cloud-translate~=3.11.0"
+    "google-cloud-translate~=3.11.0",
+    "setuptools"
 ]
 
 requires-python = ">=3.10,<3.14"
