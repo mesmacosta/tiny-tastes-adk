@@ -374,7 +374,9 @@ export default function App() {
     }
 
     // Handle final report content (could be new recipe string or old boolean)
+    console.log("evaluate final");
     if (finalReportContent) {
+      console.log(agent);
       if ((agent === "final_recipe_presenter_agent" || agent === "image_embedding_agent" || agent === "video_generator_agent") && typeof finalReportContent === 'string') {
         console.log(agent);
         console.log('[SSE HANDLER] Final recipe report received from final_recipe_presenter_agent.');

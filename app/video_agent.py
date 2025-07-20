@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import AsyncGenerator
 from urllib.parse import urlparse
@@ -13,6 +14,7 @@ from google.cloud import storage
 from google import genai
 from google.genai import types
 
+from app.string_utils import process_json_from_recipe
 
 OUTPUT_GCS_PREFIX = "gs://tiny-tastes-generated/generated-videos/"
 
@@ -44,29 +46,16 @@ class VideoGeneratorAgent(BaseAgent):
             yield Event(author=self.name)
             return
 
-        # 2. Extract the JSON content from the Markdown block.
-        json_string = raw_string.strip()
-        if json_string.startswith("```json"):
-            json_string = json_string.removeprefix("```json").strip()
-        if json_string.endswith("```"):
-            json_string = json_string.removesuffix("```").strip()
+        recipe_data = process_json_from_recipe(raw_string)
 
-        # 3. Parse the cleaned JSON string.
-        try:
-            recipe_data = json.loads(json_string)
-        except json.JSONDecodeError:
-            logging.error(
-                f"[{self.name}] Failed to parse extracted JSON string. "
-                "Content after cleaning: %s", json_string
-            )
+        if not recipe_data:
             yield Event(author=self.name)
             return
 
-        # 4. Safely get the description from the parsed data.
-        recipe_description = recipe_data.get("description")
+        # Always use recipe name, the description contains many words not accepted by veo models
+        recipe_description = recipe_data.get("recipe_name")
         if not recipe_description:
-            # if no description use name
-            recipe_description = recipe_data.get("recipe_name")
+            recipe_description = recipe_data.get("name")
             if not recipe_description:
                 logging.warning(
                     f"[{self.name}] No 'description' key found in the parsed recipe. Skipping."
@@ -74,7 +63,7 @@ class VideoGeneratorAgent(BaseAgent):
                 yield Event(author=self.name)
                 return
         # replace words that are not accept by veo models
-        recipe_description = recipe_description.replace("little fingers", "toddlers")
+        recipe_description = recipe_description.replace("little fingers", "everyone").replace("little ones", "everyone")
 
         # 5. Use the description for video generation.
         logging.info(f"Generating video from description: '{recipe_description}'")
@@ -165,7 +154,7 @@ async def generate_video_from_recipe(
         return None
 
     # 1. Create the prompt and configure generation settings
-    video_prompt = f"A cinematic, high-quality video about the following recipe, highlighting the food for a recipe: {recipe_text}"
+    video_prompt = f"A cinematic, high-quality video about the following recipe, give focus on the food, for the recipe name: {recipe_text}"
     generation_config = types.GenerateVideosConfig(
         person_generation="dont_allow",
         aspect_ratio="16:9",
@@ -234,10 +223,7 @@ async def main():
     """Main function to run the video generation test."""
 
     test_recipe = """
-    # Sunshine Smoothie
-    A bright and refreshing smoothie.
-    Ingredients: 1 ripe banana, 1/2 cup mango, 1/2 cup pineapple, 1/4 cup orange juice.
-    Instructions: Blend all ingredients until smooth. Pour and enjoy. Make sure the video shows the final result.
+A cinematic, high-quality video about the following recipe, give focus on the food: A super simple, nutrient-rich, and creamy mash perfect for everyone....
     """
 
     print("--- Starting Test Video Generation ---")
