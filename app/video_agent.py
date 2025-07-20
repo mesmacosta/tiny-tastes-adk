@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import re
 from datetime import datetime, timedelta
 from typing import AsyncGenerator
 from urllib.parse import urlparse
@@ -18,9 +17,13 @@ from google.genai import types
 OUTPUT_GCS_PREFIX = "gs://tiny-tastes-generated/generated-videos/"
 
 
+import json
+import logging
+# Make sure other necessary imports like BaseAgent, InvocationContext, etc., are present
+
 class VideoGeneratorAgent(BaseAgent):
     """
-    An agent that generates a video from a recipe.
+    An agent that generates a video from a recipe's description.
     """
 
     def __init__(self, name: str):
@@ -30,30 +33,53 @@ class VideoGeneratorAgent(BaseAgent):
         self, ctx: InvocationContext
     ) -> AsyncGenerator[Event, None]:
         logging.info(f"[{self.name}] Starting video generation process.")
-        final_recipe_report = ctx.session.state.get("final_recipe_report")
 
-        if not final_recipe_report:
+        # 1. Retrieve the raw string which may contain a Markdown block.
+        raw_string = ctx.session.state.get("current_recipe")
+
+        if not raw_string or not isinstance(raw_string, str):
             logging.warning(
-                f"[{self.name}] No 'final_recipe_report' found in state. Skipping."
+                f"[{self.name}] 'current_recipe' is missing or not a string. Skipping."
             )
             yield Event(author=self.name)
             return
 
-        # --- NEW LOGIC to remove base64 images ---
-        # Define a regex to find markdown-style base64 images.
-        base64_image_regex = re.compile(r'!\[.*?\]\(data:image\/[a-zA-Z]+;base64,.*?\)')
+        # 2. Extract the JSON content from the Markdown block.
+        json_string = raw_string.strip()
+        if json_string.startswith("```json"):
+            json_string = json_string.removeprefix("```json").strip()
+        if json_string.endswith("```"):
+            json_string = json_string.removesuffix("```").strip()
 
-        # Replace any found base64 image tags with a descriptive placeholder text.
-        cleaned_recipe_report = re.sub(
-            base64_image_regex,
-            "[Image showing this step of the recipe]",
-            final_recipe_report
-        )
-        if cleaned_recipe_report != final_recipe_report:
-            logging.info("Removed base64 image tags from recipe report before video generation.")
-        # --- End of new logic ---
+        # 3. Parse the cleaned JSON string.
+        try:
+            recipe_data = json.loads(json_string)
+        except json.JSONDecodeError:
+            logging.error(
+                f"[{self.name}] Failed to parse extracted JSON string. "
+                "Content after cleaning: %s", json_string
+            )
+            yield Event(author=self.name)
+            return
 
-        video_uri = await generate_video_from_recipe(cleaned_recipe_report)
+        # 4. Safely get the description from the parsed data.
+        recipe_description = recipe_data.get("description")
+        if not recipe_description:
+            # if no description use name
+            recipe_description = recipe_data.get("recipe_name")
+            if not recipe_description:
+                logging.warning(
+                    f"[{self.name}] No 'description' key found in the parsed recipe. Skipping."
+                )
+                yield Event(author=self.name)
+                return
+        # replace words that are not accept by veo models
+        recipe_description = recipe_description.replace("little fingers", "toddlers")
+
+        # 5. Use the description for video generation.
+        logging.info(f"Generating video from description: '{recipe_description}'")
+        video_uri = await generate_video_from_recipe(recipe_description)
+
         if video_uri:
             yield Event(
                 author=self.name,
@@ -61,9 +87,8 @@ class VideoGeneratorAgent(BaseAgent):
                     state_delta={"final_video": video_uri}
                 ),
             )
-            return
-
-        yield Event(author=self.name)
+        else:
+            yield Event(author=self.name)
 
 
 # --- NEW, SIMPLER HELPER FUNCTION ---
@@ -140,7 +165,7 @@ async def generate_video_from_recipe(
         return None
 
     # 1. Create the prompt and configure generation settings
-    video_prompt = f"A cinematic, high-quality video about the following recipe, showing the key steps: {recipe_text}"
+    video_prompt = f"A cinematic, high-quality video about the following recipe, highlighting the food for a recipe: {recipe_text}"
     generation_config = types.GenerateVideosConfig(
         person_generation="dont_allow",
         aspect_ratio="16:9",
@@ -149,7 +174,7 @@ async def generate_video_from_recipe(
         output_gcs_uri=OUTPUT_GCS_PREFIX,  # Instruct the API where to save the file
     )
 
-    logging.info(f"Initializing video generation for prompt: '{video_prompt[:100]}...'")
+    logging.info(f"Initializing video generation for prompt: '{video_prompt}...'")
 
     try:
         # 2. Start the asynchronous generation process
