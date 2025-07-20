@@ -14,8 +14,9 @@ from google.genai import types as genai_types
 from google.adk.tools.agent_tool import AgentTool
 from pydantic import BaseModel, Field
 
-from app.image_utils import generate_ingredient_image
 from app.config import config
+from app.image_agent import ImageAgent
+from app.image_utils import generate_ingredient_image
 from app.translation_utils import translate_text
 from app.video_agent import VideoGeneratorAgent
 
@@ -314,7 +315,7 @@ class ImageEmbeddingAgent(BaseAgent):
         yield Event(
             author=self.name,
             actions=EventActions(
-                state_delta={"final_recipe_report": final_markdown}
+                state_delta={"final_recipe_report_with_images": final_markdown}
             ),
         )
 
@@ -359,6 +360,7 @@ recipe_creation_pipeline = SequentialAgent(
         ),
         final_recipe_presenter_agent,
         ImageEmbeddingAgent(name="image_embedding_agent"),
+        ImageAgent(name="image_agent"),
         VideoGeneratorAgent(name="video_generator_agent"),
     ],
 )

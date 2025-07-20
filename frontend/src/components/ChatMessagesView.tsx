@@ -219,7 +219,7 @@ const HumanMessageBubble: React.FC<HumanMessageBubbleProps> = ({
 
 // Props for AiMessageBubble
 interface AiMessageBubbleProps {
-  message: { content: string; id: string; video?: string };
+  message: { content: string; id: string; image?: string; video?: string };
   mdComponents: typeof mdComponents;
   handleCopy: (text: string, messageId: string) => void;
   copiedMessageId: string | null;
@@ -300,6 +300,13 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
             <ReactMarkdown components={mdComponents} rehypePlugins={[rehypeRaw]} urlTransform={urlTransform}>
               {translatedContent || message.content}
             </ReactMarkdown>
+            {message.image && (
+                <img
+                    src={`data:image/png;base64,${message.image}`}
+                    alt="Recipe"
+                    className="mt-4 w-full rounded-lg"
+                />
+            )}
             {message.video && (
               <video className="w-full" controls>
                 <source src={message.video} type="video/mp4" />
@@ -395,7 +402,7 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
 };
 
 interface ChatMessagesViewProps {
-  messages: { type: "human" | "ai"; content: string; id: string; agent?: string; finalReportContent?: string | boolean; video?: string }[]; // Updated here
+  messages: { type: "human" | "ai"; content: string; id: string; agent?: string; finalReportContent?: string | boolean; image?:string; video?: string }[]; // Updated here
   isLoading: boolean;
   scrollAreaRef: React.RefObject<HTMLDivElement | null>;
   onSubmit: (query: string) => void;
