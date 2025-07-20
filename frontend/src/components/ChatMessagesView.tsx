@@ -199,7 +199,7 @@ const mdComponents = {
 
 // Props for HumanMessageBubble
 interface HumanMessageBubbleProps {
-  message: { content: string; id: string };
+  message: { content: string; id: string, video?: string };
   mdComponents: typeof mdComponents;
 }
 
@@ -213,6 +213,12 @@ const HumanMessageBubble: React.FC<HumanMessageBubbleProps> = ({
       <ReactMarkdown components={mdComponents} rehypePlugins={[rehypeRaw]} urlTransform={urlTransform}>
         {message.content}
       </ReactMarkdown>
+      {message.video && (
+        <video className="w-full" controls>
+          <source src={message.video} type="video/mp4" />
+          Your browser does not support the video tag.
+        </video>
+      )}
     </div>
   );
 };
