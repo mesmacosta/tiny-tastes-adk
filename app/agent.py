@@ -361,7 +361,6 @@ video_generator_agent = SequentialAgent(
     name="video_generator_agent",
     description="Generates a video for a recipe by first creating a prompt and then executing the video generation.",
     sub_agents=[
-        recipe_summarizer_prompt_agent,
         VideoGenerationExecutor(name="video_generation_executor"),
     ],
 )
@@ -371,7 +370,6 @@ image_generator_agent = SequentialAgent(
     name="image_generator_agent",
     description="Generates an image for a recipe by first creating a prompt and then executing the image generation.",
     sub_agents=[
-        recipe_summarizer_prompt_agent,
         ImageRecipeAgent(name="image_recipe_agent"),
     ],
 )
@@ -390,9 +388,9 @@ recipe_creation_pipeline = SequentialAgent(
             ],
         ),
         final_recipe_presenter_agent,
-        ImageEmbeddingAgent(name="image_embedding_agent"),
-        video_generator_agent,
+        recipe_summarizer_prompt_agent,
         image_generator_agent,
+        video_generator_agent,
     ],
 )
 

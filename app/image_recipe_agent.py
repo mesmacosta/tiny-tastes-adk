@@ -6,7 +6,6 @@ from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event, EventActions
 
 from app.image_utils import generate_recipe_image
-from app.string_utils import process_json_from_recipe
 
 
 class ImageRecipeAgent(BaseAgent):
@@ -34,6 +33,7 @@ class ImageRecipeAgent(BaseAgent):
 
         logging.info(f"[{self.name}] Generating image for: {recipe_summary_prompt}")
         image_b64 = generate_recipe_image(recipe_summary_prompt, recipe_summary_prompt)
+        final_recipe_report = ctx.session.state.get("final_recipe_report")
 
         if image_b64:
             logging.info(
@@ -42,7 +42,7 @@ class ImageRecipeAgent(BaseAgent):
             yield Event(
                 author=self.name,
                 actions=EventActions(
-                    state_delta={"final_recipe_image": image_b64}
+                    state_delta={"final_recipe_image": image_b64, "final_recipe_report": final_recipe_report}
                 ),
             )
         else:
@@ -52,6 +52,6 @@ class ImageRecipeAgent(BaseAgent):
             yield Event(
                 author=self.name,
                 actions=EventActions(
-                    state_delta={"final_recipe_image": None}
+                    state_delta={"final_recipe_image": None, "final_recipe_report": final_recipe_report}
                 ),
             )

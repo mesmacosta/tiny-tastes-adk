@@ -280,6 +280,7 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
     (agent === "final_recipe_presenter_agent" && isFinalReport) || // New final report agent
     (agent === "image_embedding_agent" && isFinalReport) ||
     (agent === "video_generation_executor" && isFinalReport) ||
+    (agent === "image_recipe_agent" && isFinalReport) ||
     (agent === "report_composer_with_citations" && isFinalReport); // Old final report agent
   
   if (shouldDisplayDirectly) {
