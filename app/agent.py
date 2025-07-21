@@ -17,8 +17,7 @@ from pydantic import BaseModel, Field
 from app.image_utils import generate_ingredient_image
 from app.config import config
 from app.translation_utils import translate_text
-from app.video_agent import VideoGeneratorAgent
-
+from app.video_agent import VideoGenerationExecutor
 
 import os
 # Disable OpenTelemetry to avoid context management issues with incompatible GCP exporter
@@ -344,6 +343,29 @@ final_recipe_presenter_agent = LlmAgent(
     output_key="final_recipe_report",
 )
 
+video_prompt_agent = LlmAgent(
+    name="video_prompt_agent",
+    model=config.worker_model,
+    description="Summarizes a recipe into a short phrase for a video.",
+    instruction="""
+    You are a creative assistant that specializes in creating short video summaries for recipes.
+    Your task is to take the recipe from the 'current_recipe' state key and summarize it into a short, engaging phrase that is suitable for an 8-second video.
+    Make sure your video summary does not contain sensitive words like Baby, babies, toddler, or infant, which will be refused by the Video generation agent.
+    Your output MUST be only this short phrase.
+    """,
+    output_key="video_prompt",
+)
+
+
+video_generator_agent = SequentialAgent(
+    name="video_generator_agent",
+    description="Generates a video for a recipe by first creating a prompt and then executing the video generation.",
+    sub_agents=[
+        video_prompt_agent,
+        VideoGenerationExecutor(name="video_generation_executor"),
+    ],
+)
+
 recipe_creation_pipeline = SequentialAgent(
     name="recipe_creation_pipeline",
     description="Takes an initial recipe, runs it through an iterative refinement loop with a pediatrician critic, and then formats the final, approved recipe.",
@@ -359,7 +381,7 @@ recipe_creation_pipeline = SequentialAgent(
         ),
         final_recipe_presenter_agent,
         ImageEmbeddingAgent(name="image_embedding_agent"),
-        VideoGeneratorAgent(name="video_generator_agent"),
+        video_generator_agent,
     ],
 )
 

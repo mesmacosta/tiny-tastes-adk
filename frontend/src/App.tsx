@@ -254,7 +254,7 @@ export default function App() {
         return "Tiny Tastes Assistant";
       case "recipe_creation_pipeline": // This is a sequential agent
         return "Recipe Creation In Progress";
-      case "video_generator_agent":
+      case "video_generation_executor":
         return "Generating Video";
       default:
         return `Processing (${agentName || 'Unknown Agent'})`;
@@ -375,15 +375,14 @@ export default function App() {
 
     // Handle final report content (could be new recipe string or old boolean)
     console.log("evaluate final");
-    if (finalReportContent) {
+    if (finalReportContent || video) {
       console.log(agent);
-      if ((agent === "final_recipe_presenter_agent" || agent === "image_embedding_agent" || agent === "video_generator_agent") && typeof finalReportContent === 'string') {
-        console.log(agent);
+      if ((agent === "final_recipe_presenter_agent" || agent === "image_embedding_agent" || agent === "video_generation_executor")) {
         console.log('[SSE HANDLER] Final recipe report received from final_recipe_presenter_agent.');
-        const finalReportContentWithPlaceholders = finalReportContent.replace(
-          /\[IMAGE_FOR:(.*?)]/g,
-          "[LOADING_SPINNER]"
-        );
+        const finalReportContentWithPlaceholders =
+          typeof finalReportContent === 'string'
+            ? finalReportContent.replace(/\[IMAGE_FOR:(.*?)]/g, '[LOADING_SPINNER]')
+            : undefined;
         console.log(finalReportContentWithPlaceholders);
         setMessages(prev =>
           prev.map(msg =>

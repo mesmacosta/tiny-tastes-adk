@@ -199,7 +199,7 @@ const mdComponents = {
 
 // Props for HumanMessageBubble
 interface HumanMessageBubbleProps {
-  message: { content: string; id: string };
+  message: { content: string; id: string, video?: string };
   mdComponents: typeof mdComponents;
 }
 
@@ -279,6 +279,7 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
     agent === "interactive_recipe_agent" || // Changed from interactive_planner_agent
     (agent === "final_recipe_presenter_agent" && isFinalReport) || // New final report agent
     (agent === "image_embedding_agent" && isFinalReport) ||
+    (agent === "video_generation_executor" && isFinalReport) ||
     (agent === "report_composer_with_citations" && isFinalReport); // Old final report agent
   
   if (shouldDisplayDirectly) {

@@ -1,6 +1,4 @@
 import asyncio
-import logging
-import re
 from datetime import datetime, timedelta
 from typing import AsyncGenerator
 from urllib.parse import urlparse
@@ -23,9 +21,9 @@ import json
 import logging
 # Make sure other necessary imports like BaseAgent, InvocationContext, etc., are present
 
-class VideoGeneratorAgent(BaseAgent):
+class VideoGenerationExecutor(BaseAgent):
     """
-    An agent that generates a video from a recipe's description.
+    A non-LLM agent that executes video generation based on a prompt in the session state.
     """
 
     def __init__(self, name: str):
@@ -34,49 +32,28 @@ class VideoGeneratorAgent(BaseAgent):
     async def _run_async_impl(
         self, ctx: InvocationContext
     ) -> AsyncGenerator[Event, None]:
-        logging.info(f"[{self.name}] Starting video generation process.")
+        logging.info(f"[{self.name}] Starting video execution process.")
+        video_prompt = ctx.session.state.get("video_prompt")
 
-        # 1. Retrieve the raw string which may contain a Markdown block.
-        raw_string = ctx.session.state.get("current_recipe")
-
-        if not raw_string or not isinstance(raw_string, str):
-            logging.warning(
-                f"[{self.name}] 'current_recipe' is missing or not a string. Skipping."
-            )
+        if not video_prompt:
+            logging.warning(f"[{self.name}] No 'video_prompt' found in state. Skipping.")
             yield Event(author=self.name)
             return
 
-        recipe_data = process_json_from_recipe(raw_string)
-
-        if not recipe_data:
-            yield Event(author=self.name)
-            return
-
-        # Always use recipe name, the description contains many words not accepted by veo models
-        recipe_description = recipe_data.get("recipe_name")
-        if not recipe_description:
-            recipe_description = recipe_data.get("name")
-            if not recipe_description:
-                logging.warning(
-                    f"[{self.name}] No 'description' key found in the parsed recipe. Skipping."
-                )
-                yield Event(author=self.name)
-                return
-        # replace words that are not accept by veo models
-        recipe_description = recipe_description.replace("little fingers", "everyone").replace("little ones", "everyone")
-
-        # 5. Use the description for video generation.
-        logging.info(f"Generating video from description: '{recipe_description}'")
-        video_uri = await generate_video_from_recipe(recipe_description)
+        logging.info(f"[{self.name}] Generating video from prompt: '{video_prompt}'")
+        video_uri = await generate_video_from_recipe(video_prompt)
 
         if video_uri:
+            final_recipe_report = ctx.session.state.get("final_recipe_report")
+            logging.info(f"[{self.name}] Successfully generated video.")
             yield Event(
                 author=self.name,
-                actions=EventActions(
-                    state_delta={"final_video": video_uri}
-                ),
+                actions=EventActions(state_delta={"final_video": video_uri,
+                                                  # remove this by fixing FE
+                                                  "final_recipe_report": final_recipe_report}),
             )
         else:
+            logging.warning(f"[{self.name}] Video generation failed.")
             yield Event(author=self.name)
 
 
