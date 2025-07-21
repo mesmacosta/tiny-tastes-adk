@@ -8,14 +8,8 @@ import google.auth
 #    GOOGLE_GENAI_USE_VERTEXAI=FALSE
 #    GOOGLE_API_KEY=PASTE_YOUR_ACTUAL_API_KEY_HERE
 # 2. This will override the default Vertex AI configuration
-try:
-    _, project_id = google.auth.default()
-    os.environ.setdefault("GOOGLE_CLOUD_PROJECT", project_id)
-except (google.auth.exceptions.DefaultCredentialsError, TypeError):
-    # Set a default project ID or handle the absence of credentials
-    project_id = "your-fallback-project-id"  # Or None, depending on your needs
-    os.environ.setdefault("GOOGLE_CLOUD_PROJECT", project_id)
-
+_, project_id = google.auth.default()
+os.environ.setdefault("GOOGLE_CLOUD_PROJECT", project_id)
 os.environ.setdefault("GOOGLE_CLOUD_LOCATION", "global")
 os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "True")
 

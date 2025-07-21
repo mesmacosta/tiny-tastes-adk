@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from datetime import datetime, timedelta
 from typing import AsyncGenerator
 from urllib.parse import urlparse
@@ -13,6 +12,7 @@ from google.cloud import storage
 from google import genai
 from google.genai import types
 
+from app.string_utils import process_json_from_recipe
 
 OUTPUT_GCS_PREFIX = "gs://tiny-tastes-generated/generated-videos/"
 
@@ -21,9 +21,9 @@ import json
 import logging
 # Make sure other necessary imports like BaseAgent, InvocationContext, etc., are present
 
-class VideoGeneratorAgent(BaseAgent):
+class VideoGenerationExecutor(BaseAgent):
     """
-    An agent that generates a video from a recipe's description.
+    A non-LLM agent that executes video generation based on a prompt in the session state.
     """
 
     def __init__(self, name: str):
@@ -32,62 +32,28 @@ class VideoGeneratorAgent(BaseAgent):
     async def _run_async_impl(
         self, ctx: InvocationContext
     ) -> AsyncGenerator[Event, None]:
-        logging.info(f"[{self.name}] Starting video generation process.")
+        logging.info(f"[{self.name}] Starting video execution process.")
+        video_prompt = ctx.session.state.get("video_prompt")
 
-        # 1. Retrieve the raw string which may contain a Markdown block.
-        raw_string = ctx.session.state.get("current_recipe")
-
-        if not raw_string or not isinstance(raw_string, str):
-            logging.warning(
-                f"[{self.name}] 'current_recipe' is missing or not a string. Skipping."
-            )
+        if not video_prompt:
+            logging.warning(f"[{self.name}] No 'video_prompt' found in state. Skipping.")
             yield Event(author=self.name)
             return
 
-        # 2. Extract the JSON content from the Markdown block.
-        json_string = raw_string.strip()
-        if json_string.startswith("```json"):
-            json_string = json_string.removeprefix("```json").strip()
-        if json_string.endswith("```"):
-            json_string = json_string.removesuffix("```").strip()
-
-        # 3. Parse the cleaned JSON string.
-        try:
-            recipe_data = json.loads(json_string)
-        except json.JSONDecodeError:
-            logging.error(
-                f"[{self.name}] Failed to parse extracted JSON string. "
-                "Content after cleaning: %s", json_string
-            )
-            yield Event(author=self.name)
-            return
-
-        # 4. Safely get the description from the parsed data.
-        recipe_description = recipe_data.get("description")
-        if not recipe_description:
-            # if no description use name
-            recipe_description = recipe_data.get("recipe_name")
-            if not recipe_description:
-                logging.warning(
-                    f"[{self.name}] No 'description' key found in the parsed recipe. Skipping."
-                )
-                yield Event(author=self.name)
-                return
-        # replace words that are not accept by veo models
-        recipe_description = recipe_description.replace("little fingers", "toddlers")
-
-        # 5. Use the description for video generation.
-        logging.info(f"Generating video from description: '{recipe_description}'")
-        video_uri = await generate_video_from_recipe(recipe_description)
+        logging.info(f"[{self.name}] Generating video from prompt: '{video_prompt}'")
+        video_uri = await generate_video_from_recipe(video_prompt)
 
         if video_uri:
+            final_recipe_report = ctx.session.state.get("final_recipe_report")
+            logging.info(f"[{self.name}] Successfully generated video.")
             yield Event(
                 author=self.name,
-                actions=EventActions(
-                    state_delta={"final_video": video_uri}
-                ),
+                actions=EventActions(state_delta={"final_video": video_uri,
+                                                  # remove this by fixing FE
+                                                  "final_recipe_report": final_recipe_report}),
             )
         else:
+            logging.warning(f"[{self.name}] Video generation failed.")
             yield Event(author=self.name)
 
 
@@ -165,7 +131,7 @@ async def generate_video_from_recipe(
         return None
 
     # 1. Create the prompt and configure generation settings
-    video_prompt = f"A cinematic, high-quality video about the following recipe, highlighting the food for a recipe: {recipe_text}"
+    video_prompt = f"A cinematic, high-quality video about the following recipe, give focus on the food, for the recipe name: {recipe_text}"
     generation_config = types.GenerateVideosConfig(
         person_generation="dont_allow",
         aspect_ratio="16:9",
@@ -234,10 +200,7 @@ async def main():
     """Main function to run the video generation test."""
 
     test_recipe = """
-    # Sunshine Smoothie
-    A bright and refreshing smoothie.
-    Ingredients: 1 ripe banana, 1/2 cup mango, 1/2 cup pineapple, 1/4 cup orange juice.
-    Instructions: Blend all ingredients until smooth. Pour and enjoy. Make sure the video shows the final result.
+A cinematic, high-quality video about the following recipe, give focus on the food: A super simple, nutrient-rich, and creamy mash perfect for everyone....
     """
 
     print("--- Starting Test Video Generation ---")

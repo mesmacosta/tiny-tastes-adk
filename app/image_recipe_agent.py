@@ -6,9 +6,10 @@ from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event, EventActions
 
 from app.image_utils import generate_recipe_image
+from app.string_utils import process_json_from_recipe
 
 
-class ImageAgent(BaseAgent):
+class ImageRecipeAgent(BaseAgent):
     """
     A non-LLM agent that takes a recipe title and description
     and generates a hero image for it.
@@ -21,24 +22,22 @@ class ImageAgent(BaseAgent):
         self, ctx: InvocationContext
     ) -> AsyncGenerator[Event, None]:
         logging.info(f"[{self.name}] Starting image generation process.")
-        recipe_title = ctx.session.state.get("current_recipe", {}).get("title")
-        recipe_description = ctx.session.state.get("current_recipe", {}).get(
-            "description"
-        )
 
-        if not recipe_title or not recipe_description:
+        recipe_summary_prompt = ctx.session.state.get("recipe_summary_prompt")
+
+        if not recipe_summary_prompt:
             logging.warning(
-                f"[{self.name}] No 'recipe_title' or 'recipe_description' found in state. Skipping."
+                f"[{self.name}] 'recipe_summary_prompt' is missing. Skipping."
             )
             yield Event(author=self.name)
             return
 
-        logging.info(f"[{self.name}] Generating image for: {recipe_title}")
-        image_b64 = generate_recipe_image(recipe_title, recipe_description)
+        logging.info(f"[{self.name}] Generating image for: {recipe_summary_prompt}")
+        image_b64 = generate_recipe_image(recipe_summary_prompt, recipe_summary_prompt)
 
         if image_b64:
             logging.info(
-                f"[{self.name}] Successfully generated image for {recipe_title}."
+                f"[{self.name}] Successfully generated image for {recipe_summary_prompt}."
             )
             yield Event(
                 author=self.name,
@@ -48,7 +47,7 @@ class ImageAgent(BaseAgent):
             )
         else:
             logging.warning(
-                f"[{self.name}] Could not generate image for {recipe_title}. Replacing with text."
+                f"[{self.name}] Could not generate image for {recipe_summary_prompt}. Replacing with text."
             )
             yield Event(
                 author=self.name,
