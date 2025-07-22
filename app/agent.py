@@ -343,26 +343,34 @@ final_recipe_presenter_agent = LlmAgent(
     output_key="final_recipe_report",
 )
 
-video_prompt_agent = LlmAgent(
-    name="video_prompt_agent",
+recipe_summarizer_prompt_agent = LlmAgent(
+    name="recipe_summarizer_prompt_agent",
     model=config.worker_model,
-    description="Summarizes a recipe into a short phrase for a video.",
+    description="Summarizes a recipe into a short phrase for a video or image.",
     instruction="""
     You are a creative assistant that specializes in creating short video summaries for recipes.
     Your task is to take the recipe from the 'current_recipe' state key and summarize it into a short, engaging phrase that is suitable for an 8-second video.
     Make sure your video summary does not contain sensitive words like Baby, babies, toddler, or infant, which will be refused by the Video generation agent.
     Your output MUST be only this short phrase.
     """,
-    output_key="video_prompt",
+    output_key="recipe_summary_prompt",
 )
 
 
 video_generator_agent = SequentialAgent(
     name="video_generator_agent",
-    description="Generates a video for a recipe by first creating a prompt and then executing the video generation.",
+    description="Generates a video for a recipe using the summary from the recipe_summarizer_prompt_agent.",
     sub_agents=[
-        video_prompt_agent,
         VideoGenerationExecutor(name="video_generation_executor"),
+    ],
+)
+
+from app.image_recipe_agent import ImageRecipeAgent
+image_generator_agent = SequentialAgent(
+    name="image_generator_agent",
+    description="Generates an image for a recipe using the summary from the recipe_summarizer_prompt_agent.",
+    sub_agents=[
+        ImageRecipeAgent(name="image_recipe_agent"),
     ],
 )
 
@@ -381,6 +389,8 @@ recipe_creation_pipeline = SequentialAgent(
         ),
         final_recipe_presenter_agent,
         ImageEmbeddingAgent(name="image_embedding_agent"),
+        recipe_summarizer_prompt_agent,
+        image_generator_agent,
         video_generator_agent,
     ],
 )

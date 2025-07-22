@@ -137,6 +137,7 @@ export default function App() {
       let sources = null;
       let pediatricianEvaluation = null; // For structured extraction if desired later
       let video: string | undefined = undefined;
+      let image: string | undefined = undefined;
 
       // Check if content.parts exists and has text
       if (parsed.content && parsed.content.parts) {
@@ -203,9 +204,13 @@ export default function App() {
         video = parsed.actions.stateDelta.final_video as string;
         console.log('[SSE EXTRACT] final_video found:', video.substring(0,100));
       }
+      if (parsed.actions?.stateDelta?.final_recipe_image) {
+        image = parsed.actions.stateDelta.final_recipe_image as string;
+        console.log('[SSE EXTRACT] final_recipe_image found:', image.substring(0,100));
+      }
 
       // Return finalReportContent instead of finalReportWithCitations
-      return { textParts, agent, finalReportContent, functionCall, functionResponse, sourceCount, sources, pediatricianEvaluation, video };
+      return { textParts, agent, finalReportContent, functionCall, functionResponse, sourceCount, sources, pediatricianEvaluation, video, image };
     } catch (error) {
       // Log the error and a truncated version of the problematic data for easier debugging.
       const truncatedData = data.length > 200 ? data.substring(0, 200) + "..." : data;
@@ -256,6 +261,8 @@ export default function App() {
         return "Recipe Creation In Progress";
       case "video_generation_executor":
         return "Generating Video";
+      case "image_recipe_agent":
+        return "Generating Recipe Image";
       default:
         return `Processing (${agentName || 'Unknown Agent'})`;
     }
@@ -270,7 +277,7 @@ export default function App() {
     // sourceCount: from actions.stateDelta.url_to_short_id (used by old research agents)
     // sources: from actions.stateDelta.sources (used by old research agents)
     // pediatricianEvaluation: from actions.stateDelta.pediatrician_evaluation
-    const { textParts, agent, finalReportContent, functionCall, functionResponse, sourceCount, sources, pediatricianEvaluation, video } = extractDataFromSSE(jsonData);
+    const { textParts, agent, finalReportContent, functionCall, functionResponse, sourceCount, sources, pediatricianEvaluation, video, image } = extractDataFromSSE(jsonData);
 
     // The new agent.py structure:
     // `interactive_recipe_agent` (root) -> text updates the main AI message. It calls:
@@ -375,9 +382,9 @@ export default function App() {
 
     // Handle final report content (could be new recipe string or old boolean)
     console.log("evaluate final");
-    if (finalReportContent || video) {
-      console.log(agent);
-      if ((agent === "final_recipe_presenter_agent" || agent === "image_embedding_agent" || agent === "video_generation_executor")) {
+    if (finalReportContent) {
+      if ((agent === "final_recipe_presenter_agent" || agent === "image_embedding_agent" || agent === "video_generation_executor" || agent === "image_recipe_agent")) {
+        console.log(agent);
         console.log('[SSE HANDLER] Final recipe report received from final_recipe_presenter_agent.');
         const finalReportContentWithPlaceholders =
           typeof finalReportContent === 'string'
@@ -394,6 +401,7 @@ export default function App() {
                   agent: agent, // Update the agent name to the current one
                   finalReportContent: finalReportContentWithPlaceholders, // Store the final content
                   video: video,
+                  image: image,
                 }
               : msg // Otherwise, return the message unchanged
           )
