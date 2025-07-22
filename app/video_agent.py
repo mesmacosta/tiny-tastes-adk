@@ -33,10 +33,10 @@ class VideoGenerationExecutor(BaseAgent):
         self, ctx: InvocationContext
     ) -> AsyncGenerator[Event, None]:
         logging.info(f"[{self.name}] Starting video execution process.")
-        video_prompt = ctx.session.state.get("video_prompt")
+        video_prompt = ctx.session.state.get("recipe_summary_prompt")
 
         if not video_prompt:
-            logging.warning(f"[{self.name}] No 'video_prompt' found in state. Skipping.")
+            logging.warning(f"[{self.name}] No 'recipe_summary_prompt' found in state. Skipping.")
             yield Event(author=self.name)
             return
 

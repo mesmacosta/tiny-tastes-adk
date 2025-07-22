@@ -359,7 +359,7 @@ recipe_summarizer_prompt_agent = LlmAgent(
 
 video_generator_agent = SequentialAgent(
     name="video_generator_agent",
-    description="Generates a video for a recipe by first creating a prompt and then executing the video generation.",
+    description="Generates a video for a recipe using the summary from the recipe_summarizer_prompt_agent.",
     sub_agents=[
         VideoGenerationExecutor(name="video_generation_executor"),
     ],
@@ -368,7 +368,7 @@ video_generator_agent = SequentialAgent(
 from app.image_recipe_agent import ImageRecipeAgent
 image_generator_agent = SequentialAgent(
     name="image_generator_agent",
-    description="Generates an image for a recipe by first creating a prompt and then executing the image generation.",
+    description="Generates an image for a recipe using the summary from the recipe_summarizer_prompt_agent.",
     sub_agents=[
         ImageRecipeAgent(name="image_recipe_agent"),
     ],
@@ -388,6 +388,7 @@ recipe_creation_pipeline = SequentialAgent(
             ],
         ),
         final_recipe_presenter_agent,
+        ImageEmbeddingAgent(name="image_embedding_agent"),
         recipe_summarizer_prompt_agent,
         image_generator_agent,
         video_generator_agent,

@@ -48,9 +48,9 @@ def generate_recipe_image(recipe_title: str, recipe_description: str) -> str | N
         response = client.models.generate_content(
             model="gemini-2.0-flash-preview-image-generation",
             contents=prompt,
-            # The config parameter with response_modalities is not supported
-            # in the latest versions of the SDK for this model.
-            # The model will return an image by default with a text prompt.
+            config=types.GenerateContentConfig(
+                response_modalities=["Text", "Image"]
+            ),
         )
 
         image_bytes = None
