@@ -111,7 +111,7 @@ def get_cached(prompt: str, object_type_to_search: str) -> str | None:
     # --- Ingestion Path (triggered on cache miss) ---
     logging.info("Generating a new video...")
 
-def insert(prompt: str, new_gcs_uri: str) -> None:
+def insert(object_type: str, prompt: str, new_gcs_uri: str) -> None:
     logging.info(f"New video generated at: {new_gcs_uri}. Caching result...")
 
     # Generate embedding for the new document
@@ -121,25 +121,27 @@ def insert(prompt: str, new_gcs_uri: str) -> None:
 
     if doc_embedding:
         # Insert the new record into BigQuery
-        insert_video_record(
+        insert_object_record(
             project_id=GCP_PROJECT_ID,
             dataset_id=BQ_DATASET_ID,
             table_id=BQ_TABLE_ID,
             prompt=prompt,
             gcs_uri=new_gcs_uri,
-            embedding=doc_embedding
+            embedding=doc_embedding,
+            object_type=object_type
         )
     else:
         logging.error("Failed to generate embedding for the new video. Result not cached.")
 
 
-def insert_video_record(
+def insert_object_record(
     project_id: str,
     dataset_id: str,
     table_id: str,
     prompt: str,
     gcs_uri: str,
     embedding: list[float],
+    object_type: str,
 ) -> bool:
     """
     Inserts a new video record into the BigQuery semantic cache table.
@@ -151,6 +153,7 @@ def insert_video_record(
         prompt: The original user prompt.
         gcs_uri: The GCS URI of the generated video.
         embedding: The text embedding of the prompt.
+        object_type: Object type VIDEO/IMAGE.
 
     Returns:
         True if insertion was successful, False otherwise.
@@ -162,7 +165,7 @@ def insert_video_record(
         rows_to_insert = [
             {
                 "object_id": str(uuid.uuid4()),
-                "object_type": "VIDEO",
+                "object_type": object_type,
                 "prompt_text": prompt,
                 "gcs_uri": gcs_uri,
                 "prompt_embedding": embedding,
@@ -196,7 +199,6 @@ def get_text_embedding(
 
     Args:
         text_content: The text to embed.
-        task_type: The task type for the embedding ('RETRIEVAL_QUERY', 'RETRIEVAL_DOCUMENT', etc.).
         output_dimensionality: The desired size of the output embedding vector.
 
     Returns:

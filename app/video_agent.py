@@ -194,7 +194,7 @@ async def generate_video_from_recipe(
             # Simply create a signed URL for the existing GCS object
             signed_url = create_signed_url_for_gcs_object(final_gcs_uri)
 
-            insert(video_prompt, signed_url)
+            insert("VIDEO", video_prompt, signed_url)
 
             return signed_url
             # --- MODIFICATION END ---
