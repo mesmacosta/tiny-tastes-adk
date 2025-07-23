@@ -5,7 +5,7 @@ VALUES
     'VIDEO',
     'A time-lapse of a city skyline from dusk to dawn',
     'gs://your-media-bucket/timelapse_city.mp4',
-    [0.011, -0.035, 0.023, 0.048, -0.019, 0.002, 0.021, -0.031],
+    ARRAY(SELECT x * 0.0001 FROM UNNEST(GENERATE_ARRAY(1, 3072)) AS x),
     '2025-07-22 20:10:00 UTC',
     '2025-07-22 20:15:30 UTC'
   ),
@@ -14,7 +14,7 @@ VALUES
     'IMAGE',
     'Impressionist painting of a robot playing chess in a park',
     'gs://your-media-bucket/robot_chess.png',
-    [0.028, 0.005, -0.041, 0.011, -0.029, 0.039, -0.047, -0.018],
+    ARRAY(SELECT x * 0.0002 FROM UNNEST(GENERATE_ARRAY(1, 3072)) AS x),
     '2025-07-22 11:00:00 UTC',
     NULL
   ),
@@ -23,7 +23,7 @@ VALUES
     'VIDEO',
     'Close-up shot of a bee collecting pollen from a sunflower, slow motion',
     'gs://your-media-bucket/bee_pollen_slowmo.mp4',
-    [-0.021, 0.015, 0.013, -0.031, 0.029, -0.009, 0.017, 0.008],
+    ARRAY(SELECT x * -0.0001 FROM UNNEST(GENERATE_ARRAY(1, 3072)) AS x),
     '2025-07-18 14:30:00 UTC',
     NULL
   ),
@@ -32,7 +32,7 @@ VALUES
     'IMAGE',
     'A logo for a coffee shop named "The Daily Grind", minimalist style',
     'gs://your-media-bucket/daily_grind_logo.svg',
-    [0.009, -0.025, 0.033, 0.041, -0.011, 0.049, -0.007, -0.022],
+    ARRAY(SELECT x * 0.0003 FROM UNNEST(GENERATE_ARRAY(1, 3072)) AS x),
     '2025-07-15 09:00:00 UTC',
     '2025-07-20 16:45:00 UTC'
   );
@@ -52,3 +52,15 @@ FROM
   )
 WHERE
   base.object_type = 'VIDEO'
+
+--- test queries
+-- Check the dimension of your STORED data
+SELECT ARRAY_LENGTH(prompt_embedding) AS stored_dimension
+FROM `report_cache_dataset.semantic_object_cache`
+LIMIT 1;
+
+-- Check the dimension of your QUERY vector
+-- (You'll need to set the @query_embedding parameter first)
+SELECT ARRAY_LENGTH(@query_embedding) AS query_dimension;
+
+For a vector search to work, all vectors must have the exact same number of dimensions.

@@ -12,7 +12,7 @@ from google.cloud import storage
 from google import genai
 from google.genai import types
 
-from app.string_utils import process_json_from_recipe
+from app.vector_search import get_cached, insert
 
 OUTPUT_GCS_PREFIX = "gs://tiny-tastes-generated/generated-videos/"
 
@@ -116,25 +116,33 @@ def create_signed_url_for_gcs_object(
 
 # --- REVISED, SIMPLER VIDEO GENERATION FUNCTION ---
 async def generate_video_from_recipe(
-        recipe_text: str
+        video_prompt: str
 ) -> str | None:
     """
     Generates a video directly to a GCS location and returns a signed URL.
 
     Args:
-        recipe_text: A string containing the recipe for the video prompt.
+        video_prompt: A string containing the recipe for the video prompt.
         output_gcs_uri_prefix: The GCS path prefix where the video should be saved
                                (e.g., "gs://your-bucket/videos/").
 
     Returns:
         A signed URL for the generated video if successful, otherwise None.
     """
-    if not recipe_text:
+    if not video_prompt:
         logging.warning("No recipe text provided. Skipping video generation.")
         return None
 
+    gcs_uri = get_cached(video_prompt, object_type_to_search = 'VIDEO')
+    if gcs_uri:
+        logging.info(f"Cached: {gcs_uri}")
+
+        # Simply create a signed URL for the existing GCS object
+        signed_url = create_signed_url_for_gcs_object(gcs_uri)
+        return signed_url
+
     # 1. Create the prompt and configure generation settings
-    video_prompt = f"A cinematic, high-quality video about the following recipe, give focus on the food, for the recipe name: {recipe_text}"
+    video_prompt_settings = f"A cinematic, high-quality video about the following recipe, give focus on the food, for the recipe name: {video_prompt}"
     generation_config = types.GenerateVideosConfig(
         person_generation="dont_allow",
         aspect_ratio="16:9",
@@ -143,7 +151,7 @@ async def generate_video_from_recipe(
         output_gcs_uri=OUTPUT_GCS_PREFIX,  # Instruct the API where to save the file
     )
 
-    logging.info(f"Initializing video generation for prompt: '{video_prompt}...'")
+    logging.info(f"Initializing video generation for prompt: '{video_prompt_settings}...'")
 
     try:
         # 2. Start the asynchronous generation process
@@ -151,7 +159,7 @@ async def generate_video_from_recipe(
         # --- MODIFICATION: Add the output_gcs_uri parameter ---
         operation = client.models.generate_videos(
             model="veo-2.0-generate-001",
-            prompt=video_prompt,
+            prompt=video_prompt_settings,
             config=generation_config,
         )
     except Exception as e:
@@ -185,6 +193,9 @@ async def generate_video_from_recipe(
 
             # Simply create a signed URL for the existing GCS object
             signed_url = create_signed_url_for_gcs_object(final_gcs_uri)
+
+            insert(video_prompt, signed_url)
+
             return signed_url
             # --- MODIFICATION END ---
         else:

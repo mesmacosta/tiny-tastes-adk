@@ -1,22 +1,25 @@
 import os
+from functools import lru_cache
 
-import vertexai
-from vertexai.language_models import TextEmbeddingInput, TextEmbeddingModel
+from google import genai
+
+from google.genai.types import EmbedContentConfig
+
 
 from google.cloud import bigquery
-from datetime import datetime
+from datetime import datetime, UTC
 import uuid
 import logging
 
 # --- Configuration Constants ---
 GCP_PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
 GCP_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION")
-BQ_DATASET_ID = "video_cache_dataset"
-BQ_TABLE_ID = "semantic_cache"
+BQ_DATASET_ID = "report_cache_dataset"
+BQ_TABLE_ID = "semantic_object_cache"
 SIMILARITY_THRESHOLD = 0.15 # For COSINE distance, lower is more similar. Tune this value.
 
 
-def _search_for_similar_video(query_prompt: str) -> tuple[str, float] | None:
+def _search_for_similar_video(query_prompt: str, object_type_to_search: str) -> tuple[str, float] | None:
     """
     Generates a query embedding and searches BigQuery for the most similar vector.
 
@@ -25,10 +28,7 @@ def _search_for_similar_video(query_prompt: str) -> tuple[str, float] | None:
     """
     # 1. Generate the query-specific embedding
     query_embedding = get_text_embedding(
-        project_id=GCP_PROJECT_ID,
-        location=GCP_LOCATION,
         text_content=query_prompt,
-        task_type="RETRIEVAL_QUERY",
     )
 
     if not query_embedding:
@@ -38,9 +38,6 @@ def _search_for_similar_video(query_prompt: str) -> tuple[str, float] | None:
     # 2. Execute the parameterized VECTOR_SEARCH query
     try:
         client = bigquery.Client(project=GCP_PROJECT_ID)
-
-        # The object type to search for
-        object_type_to_search = 'VIDEO'
 
         # The SQL query now uses a named parameter @object_type
         # Without an index, it simply performs a brute-force search.
@@ -83,7 +80,7 @@ def _search_for_similar_video(query_prompt: str) -> tuple[str, float] | None:
         return None
 
 
-def get_cached(prompt: str) -> str | None:
+def get_cached(prompt: str, object_type_to_search: str) -> str | None:
     """
     Orchestrates the semantic cache workflow.
 
@@ -95,7 +92,7 @@ def get_cached(prompt: str) -> str | None:
     logging.info(f"Processing prompt: '{prompt}'")
 
     # --- Retrieval Path ---
-    search_result = _search_for_similar_video(prompt)
+    search_result = _search_for_similar_video(prompt, object_type_to_search)
 
     if search_result:
         gcs_uri, distance = search_result
@@ -119,10 +116,7 @@ def insert(prompt: str, new_gcs_uri: str) -> None:
 
     # Generate embedding for the new document
     doc_embedding = get_text_embedding(
-        project_id=GCP_PROJECT_ID,
-        location=GCP_LOCATION,
         text_content=prompt,
-        task_type="RETRIEVAL_DOCUMENT"
     )
 
     if doc_embedding:
@@ -167,11 +161,12 @@ def insert_video_record(
 
         rows_to_insert = [
             {
-                "video_id": str(uuid.uuid4()),
+                "object_id": str(uuid.uuid4()),
+                "object_type": "VIDEO",
                 "prompt_text": prompt,
                 "gcs_uri": gcs_uri,
                 "prompt_embedding": embedding,
-                "created_at": datetime.utcnow(), # Pass datetime object directly
+                "created_at": datetime.now(UTC).isoformat(),
                 "last_accessed_at": None,
             }
         ]
@@ -191,19 +186,15 @@ def insert_video_record(
         return False
 
 
+@lru_cache(maxsize=128)
 def get_text_embedding(
-    project_id: str,
-    location: str,
     text_content: str,
-    task_type: str,
     output_dimensionality: int | None = None,
 ) -> list[float] | None:
     """
     Generates a text embedding using the gemini-embedding-004 model.
 
     Args:
-        project_id: The Google Cloud project ID.
-        location: The Google Cloud region (e.g., 'us-central1').
         text_content: The text to embed.
         task_type: The task type for the embedding ('RETRIEVAL_QUERY', 'RETRIEVAL_DOCUMENT', etc.).
         output_dimensionality: The desired size of the output embedding vector.
@@ -212,35 +203,20 @@ def get_text_embedding(
         A list of floats representing the embedding, or None if an error occurs.
     """
     try:
-        vertexai.init(project=project_id, location=location)
-        model = TextEmbeddingModel.from_pretrained("text-embedding-004") # Note: gemini-embedding-001 is a legacy model name. text-embedding-004 is current.
-
-        # Ensure task_type is valid
-        valid_tasks = [
-            "RETRIEVAL_QUERY",
-            "RETRIEVAL_DOCUMENT",
-            "SEMANTIC_SIMILARITY",
-            "CLASSIFICATION",
-            "CLUSTERING",
-        ]
-        if task_type not in valid_tasks:
-            raise ValueError(
-                f"Invalid task_type: {task_type}. Must be one of {valid_tasks}"
-            )
-
-        embedding_input = TextEmbeddingInput(text=text_content, task_type=task_type)
-
-        params = {}
-        if output_dimensionality:
-            params["output_dimensionality"] = output_dimensionality
-
-        # The get_embeddings method returns a list of TextEmbedding objects
-        embeddings = model.get_embeddings([embedding_input], **params)
+        client = genai.Client(location=GCP_LOCATION, project=GCP_PROJECT_ID)
+        embeddings_resp = client.models.embed_content(
+            model="gemini-embedding-001",
+            contents=text_content,
+            config=EmbedContentConfig(
+                task_type="RETRIEVAL_QUERY",
+                output_dimensionality=output_dimensionality,
+            ),
+        )
 
         # Each TextEmbedding object has a 'values' attribute with the embedding vector.
         # Since we are sending one text, we access the first element of the list.
-        if embeddings:
-            return embeddings[0].values
+        if embeddings_resp:
+            return embeddings_resp.embeddings[0].values
         else:
             logging.error("Failed to retrieve embedding values from the API response.")
             return None
