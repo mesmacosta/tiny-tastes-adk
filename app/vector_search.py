@@ -1,3 +1,5 @@
+import io
+import json
 import os
 from functools import lru_cache
 
@@ -19,7 +21,7 @@ BQ_TABLE_ID = "semantic_object_cache"
 SIMILARITY_THRESHOLD = 0.15 # For COSINE distance, lower is more similar. Tune this value.
 
 
-def _search_for_similar_video(query_prompt: str, object_type_to_search: str) -> tuple[str, float] | None:
+def _search_for_similar_object(query_prompt: str, object_type_to_search: str) -> tuple[str, float] | None:
     """
     Generates a query embedding and searches BigQuery for the most similar vector.
 
@@ -47,14 +49,12 @@ def _search_for_similar_video(query_prompt: str, object_type_to_search: str) -> 
           distance
         FROM
           VECTOR_SEARCH(
-            TABLE `report_cache_dataset.semantic_object_cache`,
+            (SELECT * FROM `report_cache_dataset.semantic_object_cache` WHERE object_type = @object_type),
             'prompt_embedding',
             (SELECT @query_embedding AS prompt_embedding),
             top_k => 1,
             distance_type => 'COSINE'
           )
-        WHERE
-          base.object_type = @object_type
         """
 
         # Define the query parameter for the embedding vector
@@ -84,35 +84,32 @@ def get_cached(prompt: str, object_type_to_search: str) -> str | None:
     """
     Orchestrates the semantic cache workflow.
 
-    1. Searches for a semantically similar video in BigQuery.
+    1. Searches for a semantically similar object in BigQuery.
     2. If a close match is found (cache hit), returns its GCS URI.
-    3. If no close match is found (cache miss), generates a new video,
+    3. If no close match is found (cache miss), generates a new object,
        caches it, and returns the new GCS URI.
     """
     logging.info(f"Processing prompt: '{prompt}'")
 
     # --- Retrieval Path ---
-    search_result = _search_for_similar_video(prompt, object_type_to_search)
+    search_result = _search_for_similar_object(prompt, object_type_to_search)
 
     if search_result:
         gcs_uri, distance = search_result
         logging.info(f"Found a potential match with distance: {distance:.4f}")
 
         if distance <= SIMILARITY_THRESHOLD:
-            logging.info(f"CACHE HIT. Returning existing video: {gcs_uri}")
+            logging.info(f"CACHE HIT. Returning existing object: {gcs_uri}")
             # Optionally, update the 'last_accessed_at' timestamp here
             return gcs_uri
         else:
             logging.info(
                 f"CACHE MISS. Match found but distance ({distance:.4f}) exceeds threshold ({SIMILARITY_THRESHOLD}).")
     else:
-        logging.info("CACHE MISS. No similar video found in the cache.")
-
-    # --- Ingestion Path (triggered on cache miss) ---
-    logging.info("Generating a new video...")
+        logging.info("CACHE MISS. No similar object found in the cache.")
 
 def insert(object_type: str, prompt: str, new_gcs_uri: str) -> None:
-    logging.info(f"New video generated at: {new_gcs_uri}. Caching result...")
+    logging.info(f"New object generated at: {new_gcs_uri}. Caching result...")
 
     # Generate embedding for the new document
     doc_embedding = get_text_embedding(
@@ -131,8 +128,7 @@ def insert(object_type: str, prompt: str, new_gcs_uri: str) -> None:
             object_type=object_type
         )
     else:
-        logging.error("Failed to generate embedding for the new video. Result not cached.")
-
+        logging.error("Failed to generate embedding for the new object. Result not cached.")
 
 def insert_object_record(
     project_id: str,
@@ -142,18 +138,20 @@ def insert_object_record(
     gcs_uri: str,
     embedding: list[float],
     object_type: str,
+    load_type: str = 'streaming',
 ) -> bool:
     """
-    Inserts a new video record into the BigQuery semantic cache table.
+    Inserts a new object record into the BigQuery semantic cache table.
 
     Args:
         project_id: The Google Cloud project ID.
         dataset_id: The BigQuery dataset ID.
         table_id: The BigQuery table ID.
         prompt: The original user prompt.
-        gcs_uri: The GCS URI of the generated video.
+        gcs_uri: The GCS URI of the generated object.
         embedding: The text embedding of the prompt.
-        object_type: Object type VIDEO/IMAGE.
+        object_type: Object type (e.g., VIDEO/IMAGE).
+        load_type: The insertion method to use ('streaming' or 'load_job').
 
     Returns:
         True if insertion was successful, False otherwise.
@@ -162,27 +160,41 @@ def insert_object_record(
         client = bigquery.Client(project=project_id)
         table_full_id = f"{project_id}.{dataset_id}.{table_id}"
 
-        rows_to_insert = [
-            {
-                "object_id": str(uuid.uuid4()),
-                "object_type": object_type,
-                "prompt_text": prompt,
-                "gcs_uri": gcs_uri,
-                "prompt_embedding": embedding,
-                "created_at": datetime.now(UTC).isoformat(),
-                "last_accessed_at": None,
-            }
-        ]
+        # Prepare the row to be inserted
+        row_to_insert = {
+            "object_id": str(uuid.uuid4()),
+            "object_type": object_type,
+            "prompt_text": prompt,
+            "gcs_uri": gcs_uri,
+            "prompt_embedding": embedding,
+            "created_at": datetime.now(UTC).isoformat(),
+            "last_accessed_at": None,
+        }
 
-        errors = client.insert_rows_json(table_full_id, rows_to_insert)
+        if load_type == 'load_job':
+            # Use a load job to insert the data
+            json_data = json.dumps(row_to_insert).encode("utf-8")
+            binary_buffer = io.BytesIO(json_data)
+            job_config = bigquery.LoadJobConfig(
+                source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+            )
+            load_job = client.load_table_from_file(
+                binary_buffer, table_full_id, job_config=job_config
+            )
+            load_job.result()  # Wait for the job to complete
 
-        # insert_rows_json returns an empty list for success.
-        if not errors:
-            logging.info(f"Successfully inserted 1 row for prompt: '{prompt[:50]}...'")
-            return True
+            if load_job.errors:
+                logging.error(f"Encountered errors while inserting rows: {load_job.errors}")
+                return False
         else:
-            logging.error(f"Encountered errors while inserting rows: {errors}")
-            return False
+            # Use the streaming API to insert the data
+            errors = client.insert_rows_json(table_full_id, [row_to_insert])
+            if errors:
+                logging.error(f"Encountered errors while inserting rows: {errors}")
+                return False
+
+        logging.info(f"Successfully inserted 1 row for prompt: '{prompt[:50]}...'")
+        return True
 
     except Exception as e:
         logging.error(f"An error occurred during BigQuery insertion: {e}")

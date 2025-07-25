@@ -14,11 +14,56 @@
 
 import base64
 import logging
+import uuid
 
 from google.api_core import exceptions as google_exceptions
 from google import genai
+from google.cloud import storage
 from google.genai import types
 
+from app.vector_search import get_cached, insert
+
+OUTPUT_GCS_PREFIX = "gs://tiny-tastes-generated/generated-images/"
+
+
+def download_image_from_gcs(gcs_uri: str) -> bytes | None:
+    """Downloads an image from GCS and returns its bytes."""
+    try:
+        # Extracts bucket and blob names from the GCS URI
+        bucket_name = gcs_uri.split('/')[2]
+        blob_name = "/".join(gcs_uri.split('/')[3:])
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        # Downloads the image content as bytes
+        image_bytes = blob.download_as_bytes()
+        logging.info(f"Successfully downloaded image from {gcs_uri}")
+        return image_bytes
+    except Exception as e:
+        logging.error(f"Failed to download image from GCS: {e}")
+        return None
+
+
+def upload_image_to_gcs(image_bytes: bytes, object_name: str) -> str | None:
+    """Uploads image bytes to GCS and returns the GCS URI."""
+    try:
+        # Extracts bucket name from the GCS prefix
+        prefix_split = OUTPUT_GCS_PREFIX.split('/')
+        bucket_name = prefix_split[2]
+        dir_name = prefix_split[3]
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucket_name)
+        # Creates a unique blob name for the image
+        blob_name = f"{object_name.replace(' ', '_')}-{uuid.uuid4()}.png"
+        blob = bucket.blob(f"{dir_name}/{blob_name}")
+        # Uploads the image bytes with the appropriate content type
+        blob.upload_from_string(image_bytes, content_type="image/png")
+        gcs_uri = f"{OUTPUT_GCS_PREFIX}{blob_name}"
+        logging.info(f"Successfully uploaded image to {gcs_uri}")
+        return gcs_uri
+    except Exception as e:
+        logging.error(f"Failed to upload image to GCS: {e}")
+        return None
 
 def generate_recipe_image(recipe_title: str, recipe_description: str) -> str | None:
     """
@@ -33,6 +78,17 @@ def generate_recipe_image(recipe_title: str, recipe_description: str) -> str | N
         A base64 encoded string of the generated image (PNG format),
         or None if image generation fails.
     """
+    # Checks for a cached image before generation
+    gcs_uri = get_cached(recipe_title, object_type_to_search='IMAGE')
+    if gcs_uri:
+        logging.info(f"Cached image found for recipe '{recipe_title}': {gcs_uri}")
+        # Downloads the image from GCS if it exists in the cache
+        image_bytes = download_image_from_gcs(gcs_uri)
+        if image_bytes:
+            return base64.b64encode(image_bytes).decode("utf-8")
+        else:
+            return None
+
     prompt = (
         f"Generate a vibrant, photorealistic image of the finished dish for a recipe called '{recipe_title}'. "
         f"The dish is: '{recipe_description}'. "
@@ -65,7 +121,12 @@ def generate_recipe_image(recipe_title: str, recipe_description: str) -> str | N
                     break  # Exit loop once the image is found
 
         if image_bytes:
-            return base64.b64encode(image_bytes).decode("utf-8")
+            gcs_uri = upload_image_to_gcs(image_bytes, recipe_title)
+            if gcs_uri:
+                insert("IMAGE", recipe_title, gcs_uri)
+                return base64.b64encode(image_bytes).decode("utf-8")
+            else:
+                return None
         else:
             logging.warning(
                 f"No image data was found in the API response for recipe: {recipe_title}. "
@@ -92,6 +153,15 @@ def generate_ingredient_image(ingredient_name: str) -> str | None:
         A base64 encoded string of the generated image (PNG format),
         or None if image generation fails or no image is returned.
     """
+    gcs_uri = get_cached(ingredient_name, object_type_to_search='INGREDIENT')
+    if gcs_uri:
+        logging.info(f"Cached image found for ingredient '{ingredient_name}': {gcs_uri}")
+        # Downloads the image from GCS if it exists in the cache
+        image_bytes = download_image_from_gcs(gcs_uri)
+        if image_bytes:
+            return base64.b64encode(image_bytes).decode("utf-8")
+        else:
+            return None
 
     prompt = (
         f"Generate a clear, vibrant, photorealistic image of a single {ingredient_name}, "
@@ -126,7 +196,12 @@ def generate_ingredient_image(ingredient_name: str) -> str | None:
                     break  # Found the image
 
         if image_bytes:
-            return base64.b64encode(image_bytes).decode("utf-8")
+            gcs_uri = upload_image_to_gcs(image_bytes, ingredient_name)
+            if gcs_uri:
+                insert("INGREDIENT", ingredient_name, gcs_uri)
+                return base64.b64encode(image_bytes).decode("utf-8")
+            else:
+                return None
         else:
             logging.warning(
                 f"No image data found in response for ingredient: {ingredient_name}. "
@@ -142,9 +217,8 @@ def generate_ingredient_image(ingredient_name: str) -> str | None:
         return None
 
 if __name__ == '__main__':
-    # Simple test (ensure GOOGLE_API_KEY is set)
     logging.basicConfig(level=logging.INFO)
-    test_ingredients = ["carrot", "broccoli florets", "ripe avocado", "nonexistentingredientxyz"]
+    test_ingredients = ["apple", "banana", "rice", "potato"]
     for item in test_ingredients:
         print(f"\nTesting with: {item}")
         b64_image = generate_ingredient_image(item)
