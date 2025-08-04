@@ -1,4 +1,5 @@
 import asyncio
+import os
 from datetime import datetime, timedelta
 from typing import AsyncGenerator
 from urllib.parse import urlparse
@@ -14,10 +15,13 @@ from google.genai import types
 
 from app.vector_search import get_cached, insert
 
-OUTPUT_GCS_PREFIX = "gs://tiny-tastes-generated/generated-videos/"
+GCP_PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
+GCP_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION")
+GOOGLE_CLOUD_BUCKET = os.getenv("GOOGLE_CLOUD_BUCKET")
+SERVICE_ACCOUNT_EMAIL = os.getenv("SERVICE_ACCOUNT_EMAIL")
+OUTPUT_GCS_PREFIX = f"gs://{GOOGLE_CLOUD_BUCKET}/generated-videos/"
 
 
-import json
 import logging
 # Make sure other necessary imports like BaseAgent, InvocationContext, etc., are present
 
@@ -95,7 +99,7 @@ def create_signed_url_for_gcs_object(
         expires = datetime.now() + timedelta(seconds=86400)
 
         # In case of user credential use, define manually the service account to use (for development purpose only)
-        service_account_email = "tiny-tastes-gcs-signer@gcp-tutorials-main.iam.gserviceaccount.com"
+        service_account_email = SERVICE_ACCOUNT_EMAIL
         # If you use a service account credential, you can use the embedded email
         if hasattr(credentials, "service_account_email"):
             service_account_email = credentials.service_account_email
@@ -155,10 +159,10 @@ async def generate_video_from_recipe(
 
     try:
         # 2. Start the asynchronous generation process
-        client = genai.Client(vertexai=True, project="gcp-tutorials-main", location="us-central1")
+        client = genai.Client(vertexai=True, project=GCP_PROJECT_ID, location=GCP_LOCATION)
         # --- MODIFICATION: Add the output_gcs_uri parameter ---
         operation = client.models.generate_videos(
-            model="veo-2.0-generate-001",
+            model="veo-3.0-fast-generate-001",
             prompt=video_prompt_settings,
             config=generation_config,
         )

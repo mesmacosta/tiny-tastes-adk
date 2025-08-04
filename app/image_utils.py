@@ -14,6 +14,7 @@
 
 import base64
 import logging
+import os
 import uuid
 
 from google.api_core import exceptions as google_exceptions
@@ -23,7 +24,10 @@ from google.genai import types
 
 from app.vector_search import get_cached, insert
 
-OUTPUT_GCS_PREFIX = "gs://tiny-tastes-generated/generated-images/"
+GCP_PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
+GCP_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION")
+GOOGLE_CLOUD_BUCKET = os.getenv("GOOGLE_CLOUD_BUCKET")
+OUTPUT_GCS_PREFIX = f"gs://{GOOGLE_CLOUD_BUCKET}/generated-images/"
 
 
 def download_image_from_gcs(gcs_uri: str) -> bytes | None:
@@ -100,7 +104,7 @@ def generate_recipe_image(recipe_title: str, recipe_description: str) -> str | N
     logging.info(f"Generating image for recipe: {recipe_title}")
 
     try:
-        client = genai.Client()
+        client = genai.Client(vertexai=True, project=GCP_PROJECT_ID, location=GCP_LOCATION)
         response = client.models.generate_content(
             model="gemini-2.0-flash-preview-image-generation",
             contents=prompt,
@@ -172,7 +176,7 @@ def generate_ingredient_image(ingredient_name: str) -> str | None:
     logging.info(f"Generating image for: {ingredient_name} with prompt: {prompt}")
 
     try:
-        client = genai.Client()
+        client = genai.Client(vertexai=True, project=GCP_PROJECT_ID, location=GCP_LOCATION)
         # Removed the `generation_config` with the unsupported `response_modalities`
         response = client.models.generate_content(
             model="gemini-2.0-flash-preview-image-generation",
