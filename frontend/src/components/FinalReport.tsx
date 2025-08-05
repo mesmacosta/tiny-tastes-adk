@@ -12,6 +12,15 @@ interface FinalReportProps {
   isTranslating: boolean;
 }
 
+const urlTransform = (url: string) => {
+  if (url.startsWith('data:image/')) {
+    return url;
+  }
+  // For all other URLs, use the default behavior
+  const newUrl = new URL(url, 'http://localhost'); // A base URL is required
+  return newUrl.href;
+};
+
 export function FinalReport({
   reportContent,
   image,
@@ -25,7 +34,7 @@ export function FinalReport({
       <div className="animate-fadeInUp">
         <h2 className="text-xl font-bold mb-3">🍲 Recipe</h2>
         <div className="animate-fadeInUpSmooth animation-delay-200">
-          <ReactMarkdown components={mdComponents} rehypePlugins={[rehypeRaw]}>
+          <ReactMarkdown components={mdComponents} rehypePlugins={[rehypeRaw]} urlTransform={urlTransform}>
             {reportContent}
           </ReactMarkdown>
         </div>

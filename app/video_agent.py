@@ -162,7 +162,7 @@ async def generate_video_from_recipe(
         client = genai.Client(vertexai=True, project=GCP_PROJECT_ID, location=GCP_LOCATION)
         # --- MODIFICATION: Add the output_gcs_uri parameter ---
         operation = client.models.generate_videos(
-            model="veo-2.0-generate-001",
+            model="veo-3.0-fast-generate-001",
             prompt=video_prompt_settings,
             config=generation_config,
         )
