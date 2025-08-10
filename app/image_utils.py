@@ -15,11 +15,135 @@
 import base64
 import logging
 import os
+import uuid
 
 from google.api_core import exceptions as google_exceptions
 from google import genai
+from google.cloud import storage
 from google.genai import types
 
+from app.vector_search import get_cached, insert
+
+GCP_PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
+GCP_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION")
+GOOGLE_CLOUD_BUCKET = os.getenv("GOOGLE_CLOUD_BUCKET")
+OUTPUT_GCS_PREFIX = f"gs://{GOOGLE_CLOUD_BUCKET}/generated-images/"
+
+
+def download_image_from_gcs(gcs_uri: str) -> bytes | None:
+    """Downloads an image from GCS and returns its bytes."""
+    try:
+        # Extracts bucket and blob names from the GCS URI
+        bucket_name = gcs_uri.split('/')[2]
+        blob_name = "/".join(gcs_uri.split('/')[3:])
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        # Downloads the image content as bytes
+        image_bytes = blob.download_as_bytes()
+        logging.info(f"Successfully downloaded image from {gcs_uri}")
+        return image_bytes
+    except Exception as e:
+        logging.error(f"Failed to download image from GCS: {e}")
+        return None
+
+
+def upload_image_to_gcs(image_bytes: bytes, object_name: str) -> str | None:
+    """Uploads image bytes to GCS and returns the GCS URI."""
+    try:
+        # Extracts bucket name from the GCS prefix
+        prefix_split = OUTPUT_GCS_PREFIX.split('/')
+        bucket_name = prefix_split[2]
+        dir_name = prefix_split[3]
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucket_name)
+        # Creates a unique blob name for the image
+        blob_name = f"{object_name.replace(' ', '_')}-{uuid.uuid4()}.png"
+        blob = bucket.blob(f"{dir_name}/{blob_name}")
+        # Uploads the image bytes with the appropriate content type
+        blob.upload_from_string(image_bytes, content_type="image/png")
+        gcs_uri = f"{OUTPUT_GCS_PREFIX}{blob_name}"
+        logging.info(f"Successfully uploaded image to {gcs_uri}")
+        return gcs_uri
+    except Exception as e:
+        logging.error(f"Failed to upload image to GCS: {e}")
+        return None
+
+def generate_recipe_image(recipe_title: str, recipe_description: str) -> str | None:
+    """
+    Generates an image for a given recipe using its title and description,
+    and returns it as a base64 encoded string.
+
+    Args:
+        recipe_title: The title of the recipe (e.g., "Sunshine Sweet Potato Puree").
+        recipe_description: A brief summary of the recipe.
+
+    Returns:
+        A base64 encoded string of the generated image (PNG format),
+        or None if image generation fails.
+    """
+    # Checks for a cached image before generation
+    gcs_uri = get_cached(recipe_title, object_type_to_search='IMAGE')
+    if gcs_uri:
+        logging.info(f"Cached image found for recipe '{recipe_title}': {gcs_uri}")
+        # Downloads the image from GCS if it exists in the cache
+        image_bytes = download_image_from_gcs(gcs_uri)
+        if image_bytes:
+            return base64.b64encode(image_bytes).decode("utf-8")
+        else:
+            return None
+
+    prompt = (
+        f"Generate a vibrant, photorealistic image of the finished dish for a recipe called '{recipe_title}'. "
+        f"The dish is: '{recipe_description}'. "
+        "The image should be beautifully styled and appetizing, presented in a small bowl or on a plate suitable for a baby. "
+        "The food should be the main focus, set against a clean, bright, and slightly blurred background. "
+        "The lighting should be soft and natural, making the dish look delicious and wholesome."
+    )
+
+    logging.info(f"Generating image for recipe: {recipe_title}")
+
+    try:
+        client = genai.Client(vertexai=True, project=GCP_PROJECT_ID, location=GCP_LOCATION)
+        response = client.models.generate_content(
+            model="gemini-2.0-flash-preview-image-generation",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_modalities=["Text", "Image"]
+            ),
+        )
+
+        image_bytes = None
+        # Iterate through the response parts to find the image data
+        if response.candidates and response.candidates[0].content.parts:
+            for part in response.candidates[0].content.parts:
+                if part.inline_data and part.inline_data.data:
+                    image_bytes = part.inline_data.data
+                    logging.info(f"Successfully generated image for recipe: {recipe_title}, "
+                                 f"mime_type: {part.inline_data.mime_type}, "
+                                 f"size: {len(image_bytes)} bytes.")
+                    break  # Exit loop once the image is found
+
+        if image_bytes:
+            gcs_uri = upload_image_to_gcs(image_bytes, recipe_title)
+            if gcs_uri:
+                insert("IMAGE", recipe_title, gcs_uri)
+                return base64.b64encode(image_bytes).decode("utf-8")
+            else:
+                return None
+        else:
+            logging.warning(
+                f"No image data was found in the API response for recipe: {recipe_title}. "
+                f"Response text: {response.text if hasattr(response, 'text') else 'N/A'}"
+            )
+            return None
+
+    except google_exceptions.GoogleAPIError as e:
+        logging.error(f"A Google API error occurred during image generation for {recipe_title}: {e}")
+        return None
+    except Exception as e:
+        logging.error(f"An unexpected error occurred during image generation for {recipe_title}: {e}")
+        return None
 
 def generate_ingredient_image(ingredient_name: str) -> str | None:
     """
@@ -33,37 +157,33 @@ def generate_ingredient_image(ingredient_name: str) -> str | None:
         A base64 encoded string of the generated image (PNG format),
         or None if image generation fails or no image is returned.
     """
-    try:
-        client = genai.Client() # Initialize client here to pick up config
-        model = client.models.get(
-            "gemini-2.0-flash-preview-image-generation"
-        ) # More explicit model fetching
-    except Exception as e:
-        logging.error(f"Failed to initialize Gemini client or model: {e}")
-        return None
+    gcs_uri = get_cached(ingredient_name, object_type_to_search='INGREDIENT')
+    if gcs_uri:
+        logging.info(f"Cached image found for ingredient '{ingredient_name}': {gcs_uri}")
+        # Downloads the image from GCS if it exists in the cache
+        image_bytes = download_image_from_gcs(gcs_uri)
+        if image_bytes:
+            return base64.b64encode(image_bytes).decode("utf-8")
+        else:
+            return None
 
     prompt = (
         f"Generate a clear, vibrant, photorealistic image of a single {ingredient_name}, "
-        "on a clean, plain white background. The ingredient should be the main focus. "
-        "The image should be suitable as an icon in a recipe app."
+        "on a transparent background. The ingredient should be the sole focus, with no shadows. "
+        "The final image must be a PNG with a transparent alpha channel, suitable as an icon in a recipe app."
     )
 
     logging.info(f"Generating image for: {ingredient_name} with prompt: {prompt}")
 
     try:
-        response = model.generate_content(
+        client = genai.Client(vertexai=True, project=GCP_PROJECT_ID, location=GCP_LOCATION)
+        # Removed the `generation_config` with the unsupported `response_modalities`
+        response = client.models.generate_content(
+            model="gemini-2.0-flash-preview-image-generation",
             contents=prompt,
-            generation_config=types.GenerationConfig(
-                response_modalities=["TEXT", "IMAGE"]
+            config=types.GenerateContentConfig(
+                response_modalities=["Text", "Image"]
             ),
-            # It's good practice to add safety settings,
-            # though defaults are usually reasonable.
-            # safety_settings=[
-            #     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-            #     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-            #     {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            #     {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-            # ]
         )
 
         image_bytes = None
@@ -80,7 +200,12 @@ def generate_ingredient_image(ingredient_name: str) -> str | None:
                     break  # Found the image
 
         if image_bytes:
-            return base64.b64encode(image_bytes).decode("utf-8")
+            gcs_uri = upload_image_to_gcs(image_bytes, ingredient_name)
+            if gcs_uri:
+                insert("INGREDIENT", ingredient_name, gcs_uri)
+                return base64.b64encode(image_bytes).decode("utf-8")
+            else:
+                return None
         else:
             logging.warning(
                 f"No image data found in response for ingredient: {ingredient_name}. "
@@ -96,17 +221,16 @@ def generate_ingredient_image(ingredient_name: str) -> str | None:
         return None
 
 if __name__ == '__main__':
-    # Simple test (ensure GOOGLE_API_KEY is set)
     logging.basicConfig(level=logging.INFO)
-    test_ingredients = ["carrot", "broccoli florets", "ripe avocado", "nonexistentingredientxyz"]
+    test_ingredients = ["apple", "banana", "rice", "potato"]
     for item in test_ingredients:
         print(f"\nTesting with: {item}")
         b64_image = generate_ingredient_image(item)
         if b64_image:
             print(f"Got base64 image for {item} (first 50 chars): {b64_image[:50]}...")
             # To save and view:
-            # with open(f"{item.replace(' ', '_')}.png", "wb") as f:
-            #     f.write(base64.b64decode(b64_image))
+            with open(f"{item.replace(' ', '_')}.png", "wb") as f:
+                f.write(base64.b64decode(b64_image))
             # print(f"Saved {item.replace(' ', '_')}.png")
         else:
             print(f"Failed to get image for {item}")

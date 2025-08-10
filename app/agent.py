@@ -1,5 +1,6 @@
 import datetime
 import logging
+import re
 from collections.abc import AsyncGenerator
 from typing import Literal
 
@@ -13,7 +14,10 @@ from google.genai import types as genai_types
 from google.adk.tools.agent_tool import AgentTool
 from pydantic import BaseModel, Field
 
-from .config import config
+from app.image_utils import generate_ingredient_image
+from app.config import config
+from app.translation_utils import translate_text
+from app.video_agent import VideoGenerationExecutor
 
 import os
 # Disable OpenTelemetry to avoid context management issues with incompatible GCP exporter
@@ -164,9 +168,9 @@ def collect_research_sources_callback(callback_context: CallbackContext) -> None
 recipe_generator = LlmAgent(
     model=config.worker_model,
     name="recipe_generator",
-    description="Generates a creative and simple toddler food recipe for a child aged 6+ months, either from a list of ingredients or from a direct recipe name.",
+    description="Generates a creative and simple toddler food recipe for a child aged 1+ year, either from a list of ingredients or from a direct recipe name.",
     instruction="""
-    You are a creative chef specializing in recipes for toddlers. Your task is to create a simple, single-serving recipe suitable for a child aged 6+ months.
+    You are a creative chef specializing in recipes for toddlers. Your task is to create a simple, single-serving recipe suitable for a child aged 1+ year.
 
     You will receive one of two inputs:
     1.  A list of one or more ingredients.
@@ -175,12 +179,12 @@ recipe_generator = LlmAgent(
     **TASK:**
     - If given a list of ingredients, invent a creative and simple recipe using them.
     - If given the name of a recipe, provide a simple version of that recipe.
-    - All recipes should be tailored for a toddler aged 6+ months, focusing on soft textures, small pieces, and avoiding common choking hazards.
+    - All recipes should be tailored for a toddler aged 1+ year, focusing on soft textures, small pieces, and avoiding common choking hazards.
 
     **RULES:**
     1.  Your output MUST be a valid JSON object that conforms to the `Recipe` schema.
     2.  The recipe must be simple, with clear instructions suitable for a beginner cook.
-    3.  The `age_range` field in your output MUST be set to "6+ months".
+    3.  The `age_range` field in your output MUST be set to "1+ year".
     """,
     tools=[google_search],
     output_key="current_recipe",
@@ -243,26 +247,131 @@ recipe_refiner_agent = LlmAgent(
 )
 
 
+def get_ingredient_image(ingredient_name: str) -> dict:
+    """Fetches a representative image for a culinary ingredient.
+
+    This tool takes the name of an ingredient and returns its image as a
+    base64 encoded string, which can be directly embedded in markdown.
+
+    Args:
+        ingredient_name (str): The name of the ingredient to get an image for (e.g., "avocado", "banana").
+
+    Returns:
+        dict: A dictionary containing the operation status and image data.
+              - On success: {"status": "success", "image_b64": "<base64_string>"}
+              - On failure: {"status": "error", "message": "Failed to generate image."}
+    """
+    if not ingredient_name:
+        return {"status": "error", "message": "Ingredient name cannot be empty."}
+
+    # Generate the image using a separate function/service
+    image_b64 = generate_ingredient_image(ingredient_name)
+
+    if image_b64:
+        return {"status": "success", "image_b64": image_b64}
+
+    return {"status": "error", "message": "Failed to generate image."}
+
+
+class ImageEmbeddingAgent(BaseAgent):
+    """
+    A non-LLM agent that takes a markdown string with image placeholders
+    and replaces them with actual base64 encoded images.
+    """
+    def __init__(self, name: str):
+        super().__init__(name=name)
+
+    async def _run_async_impl(
+            self, ctx: InvocationContext
+    ) -> AsyncGenerator[Event, None]:
+        logging.info(f"[{self.name}] Starting image embedding process.")
+        markdown_template = ctx.session.state.get("final_recipe_report")
+
+        if not markdown_template:
+            logging.warning(f"[{self.name}] No 'final_recipe_report' found in state. Skipping.")
+            yield Event(author=self.name)
+            return
+
+        final_markdown = markdown_template
+        placeholders = re.findall(r'\[IMAGE_FOR:(.*?)\]', markdown_template)
+        logging.info(f"[{self.name}] Found placeholders for: {placeholders}")
+
+        for ingredient_name in placeholders:
+            placeholder_tag = f"[IMAGE_FOR:{ingredient_name}]"
+            logging.info(f"[{self.name}] Processing ingredient: {ingredient_name}")
+            image_data = get_ingredient_image(ingredient_name)
+
+            if image_data and image_data.get("status") == "success":
+                image_b64 = image_data.get("image_b64")
+                markdown_image_tag = f'![{ingredient_name}](data:image/png;base64,{image_b64})'
+                final_markdown = final_markdown.replace(placeholder_tag, markdown_image_tag)
+                logging.info(f"[{self.name}] Successfully replaced placeholder for {ingredient_name}.")
+            else:
+                final_markdown = final_markdown.replace(placeholder_tag, f"*{ingredient_name} (image not available)*")
+                logging.warning(f"[{self.name}] Could not generate image for {ingredient_name}. Replacing with text.")
+
+        yield Event(
+            author=self.name,
+            actions=EventActions(
+                state_delta={"final_recipe_report": final_markdown}
+            ),
+        )
+
 final_recipe_presenter_agent = LlmAgent(
     model=config.critic_model,
     name="final_recipe_presenter_agent",
-    include_contents="none",
-    description="Formats the final, approved recipe into a detailed, user-friendly markdown report.",
+    # The tool is no longer needed here
+    description="Formats the final recipe into a user-friendly markdown report.",
     instruction="""
-    You are a food blogger who specializes in creating beautiful and informative recipe cards for parents.
+    You are a food blogger creating beautiful recipe cards for parents.
     Your task is to take the final, approved recipe data from the 'current_recipe' state key and format it into a clear and appealing markdown report.
+
+    **CRITICAL INSTRUCTION: IMAGE PLACEHOLDERS**
+    For EVERY ingredient in the recipe's ingredient list, you MUST NOT generate an image. Instead, you MUST insert a special placeholder tag in the format: [IMAGE_FOR:<ingredient_name>]
+    For example, for '1 cup of mashed bananas', you would write: `* 1 cup of mashed bananas [IMAGE_FOR:bananas]`
 
     **REPORT STRUCTURE:**
     -   Start with the recipe `title` as a main heading (`#`).
     -   Include the `description` and `age_appropriateness`.
-    -   Use a sub-heading (`##`) for "Ingredients" and list them.
+    -   Use a sub-heading (`##`) for "Ingredients". For each item, list the ingredient and its corresponding placeholder tag.
     -   Use a sub-heading (`##`) for "Instructions" and list the steps.
-    -   Add a "Nutrition Notes" section (`##`) with a brief, helpful summary of the recipe's health benefits for a baby.
-    -   Add a "Safety First!" section (`##`) with a bullet point reminding parents to ensure the texture is appropriate for their baby's age to prevent choking.
+    -   Add a "Nutrition Notes" section (`##`) with a helpful summary of the recipe's health benefits for a baby.
+    -   Add a "Safety First!" section (`##`) with a reminder about appropriate food texture.
 
-    Your output should be a single, well-formatted markdown document.
+    Your final output must be a single, well-formatted markdown document containing the placeholders.
     """,
     output_key="final_recipe_report",
+)
+
+recipe_summarizer_prompt_agent = LlmAgent(
+    name="recipe_summarizer_prompt_agent",
+    model=config.worker_model,
+    description="Summarizes a recipe into a short phrase for a video or image.",
+    instruction="""
+    You are a creative assistant that specializes in creating short video summaries for recipes.
+    Your task is to take the recipe from the 'current_recipe' state key and summarize it into a short, engaging phrase that is suitable for an 8-second video.
+    Make sure your video summary does not contain sensitive words like Baby, babies, toddler, or infant, which will be refused by the Video generation agent.
+    Your output MUST be only this short phrase.
+    """,
+    output_key="recipe_summary_prompt",
+)
+
+
+video_generator_agent = SequentialAgent(
+    name="video_generator_agent",
+    description="Generates a video for a recipe using the summary from the recipe_summarizer_prompt_agent.",
+    sub_agents=[
+        VideoGenerationExecutor(name="video_generation_executor"),
+    ],
+)
+
+from app.image_recipe_agent import ImageRecipeAgent
+image_generator_agent = SequentialAgent(
+    name="image_generator_agent",
+    description="Generates an image for a recipe using the summary from the recipe_summarizer_prompt_agent.",
+    sub_agents=[
+        ImageRecipeAgent(name="image_recipe_agent"),
+    ],
 )
 
 recipe_creation_pipeline = SequentialAgent(
@@ -279,6 +388,10 @@ recipe_creation_pipeline = SequentialAgent(
             ],
         ),
         final_recipe_presenter_agent,
+        ImageEmbeddingAgent(name="image_embedding_agent"),
+        recipe_summarizer_prompt_agent,
+        image_generator_agent,
+        video_generator_agent,
     ],
 )
 
@@ -305,6 +418,49 @@ interactive_recipe_agent = LlmAgent(
     sub_agents=[recipe_creation_pipeline],
     tools=[AgentTool(recipe_generator)],
     output_key="initial_recipe",
+)
+
+class TranslationAgent(BaseAgent):
+    """
+    A non-LLM agent that takes a markdown string with image placeholders
+    and replaces them with actual base64 encoded images.
+    """
+
+    def __init__(self, name: str):
+        super().__init__(name=name)
+
+    async def _run_async_impl(
+        self, ctx: InvocationContext
+    ) -> AsyncGenerator[Event, None]:
+        logging.info(f"[{self.name}] Starting translation process.")
+        markdown_template = ctx.session.state.get("final_recipe_report")
+
+        if not markdown_template:
+            logging.warning(
+                f"[{self.name}] No 'final_recipe_report' found in state. Skipping."
+            )
+            yield Event(author=self.name)
+            return
+
+        translated_markdown = translate_text(
+            text=markdown_template, target_language="pt-BR"
+        )
+        logging.info(f"[{self.name}] Successfully translated report.")
+
+        yield Event(
+            author=self.name,
+            actions=EventActions(
+                state_delta={"final_recipe_report": translated_markdown}
+            ),
+        )
+
+
+translate_recipe_agent = SequentialAgent(
+    name="translate_recipe_agent",
+    description="Translates the final recipe report to Brazilian Portuguese.",
+    sub_agents=[
+        TranslationAgent(name="translation_agent"),
+    ],
 )
 
 root_agent = interactive_recipe_agent

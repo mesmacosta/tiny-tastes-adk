@@ -1,18 +1,37 @@
 [project]
-name = "tiny-tastes-adk"
+name = "tiny-tastes-adk-prod"
 version = "0.1.0"
 description = ""
+authors = [
+    {name = "Your Name", email = "your@email.com"},
+]
 dependencies = [
-    "google-adk==1.4.2",
+    "google-adk~=1.4.2",
+    "opentelemetry-exporter-gcp-trace~=1.9.0",
+    "google-cloud-logging~=3.11.4",
+    "google-cloud-aiplatform~=1.99.0",
+    "google-genai~=1.26.0",
+    "fastapi~=0.115.8",
+    "uvicorn~=0.34.0",
+    "google-cloud-translate~=3.11.0",
+    "setuptools"
 ]
 
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10,<3.14"
+
 
 [dependency-groups]
-dev = []
+dev = [
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.23.8",
+    "nest-asyncio>=1.6.0",
+]
 
 [project.optional-dependencies]
 
+jupyter = [
+    "jupyter~=1.0.0",
+]
 lint = [
     "ruff>=0.4.6",
     "mypy~=1.15.0",
