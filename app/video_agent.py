@@ -23,7 +23,6 @@ OUTPUT_GCS_PREFIX = f"gs://{GOOGLE_CLOUD_BUCKET}/generated-videos/"
 
 
 import logging
-# Make sure other necessary imports like BaseAgent, InvocationContext, etc., are present
 
 class VideoGenerationExecutor(BaseAgent):
     """
@@ -64,7 +63,6 @@ class VideoGenerationExecutor(BaseAgent):
                                                   "final_recipe_image" : final_recipe_image}))
 
 
-# --- NEW, SIMPLER HELPER FUNCTION ---
 def create_signed_url_for_gcs_object(
         gcs_uri: str
 ) -> str | None:
@@ -113,12 +111,6 @@ def create_signed_url_for_gcs_object(
         logging.error(f"Failed to create signed URL for {gcs_uri}: {e}")
         return None
 
-
-# --- AGENT CLASS (No changes needed) ---
-# This class remains the same as it reads configuration from the context.
-
-
-# --- REVISED, SIMPLER VIDEO GENERATION FUNCTION ---
 async def generate_video_from_recipe(
         video_prompt: str
 ) -> str | None:
@@ -160,7 +152,6 @@ async def generate_video_from_recipe(
     try:
         # 2. Start the asynchronous generation process
         client = genai.Client(vertexai=True, project=GCP_PROJECT_ID, location=GCP_LOCATION)
-        # --- MODIFICATION: Add the output_gcs_uri parameter ---
         operation = client.models.generate_videos(
             model="veo-3.0-fast-generate-001",
             prompt=video_prompt_settings,
@@ -190,8 +181,6 @@ async def generate_video_from_recipe(
 
         # The response now contains the GCS URI of the saved video
         for video in response.generated_videos:
-            # --- MODIFICATION START ---
-            # The URI is now a permanent GCS path, not a temporary file handle.
             final_gcs_uri = video.video.uri
             logging.info(f"Video successfully generated at: {final_gcs_uri}")
 
@@ -201,7 +190,6 @@ async def generate_video_from_recipe(
             insert("VIDEO", video_prompt, final_gcs_uri)
 
             return signed_url
-            # --- MODIFICATION END ---
         else:
             logging.warning("Operation completed, but no video was generated.")
 
@@ -213,7 +201,6 @@ async def generate_video_from_recipe(
     return None
 
 
-# --- REVISED Example Usage ---
 async def main():
     """Main function to run the video generation test."""
 
