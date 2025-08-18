@@ -24,8 +24,9 @@ from opentelemetry.sdk.trace import TracerProvider, export
 
 from app.utils.gcs import create_bucket_if_not_exists
 from app.utils.tracing import CloudTraceLoggingSpanExporter
-from app.utils.typing import Feedback, TranslateRequest
+from app.utils.typing import Feedback, TranslateRequest, DetectIngredientsRequest
 from app.translation_utils import translate_text
+from app.image_detection import detect_ingredients
 
 _, project_id = google.auth.default()
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
@@ -89,6 +90,20 @@ def translate(request: TranslateRequest) -> dict[str, str]:
     """
     translated_text = translate_text(request.text, "pt-BR")
     return {"translated_text": translated_text}
+
+
+@app.post("/detect-ingredients")
+def detect(request: DetectIngredientsRequest) -> dict[str, str]:
+    """Detects ingredients from an image.
+
+    Args:
+        request: The request data with the image to process.
+
+    Returns:
+        A comma-separated list of ingredients.
+    """
+    ingredients = detect_ingredients(request.image_b64)
+    return {"ingredients": ingredients}
 
 
 # Main execution

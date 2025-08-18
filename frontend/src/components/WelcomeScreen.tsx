@@ -3,14 +3,20 @@ import { InputForm } from "@/components/InputForm";
 
 interface WelcomeScreenProps {
   handleSubmit: (query: string) => void;
+  onImageUpload: (image_b64: string) => void;
   isLoading: boolean;
   onCancel: () => void;
+  inputValue: string;
+  setInputValue: (value: string) => void;
 }
 
 export function WelcomeScreen({
   handleSubmit,
+  onImageUpload,
   isLoading,
   onCancel,
+  inputValue,
+  setInputValue,
 }: WelcomeScreenProps) {
   return (
     // This container fills the space provided by its parent layout (e.g., the left panel in a split view)
@@ -37,7 +43,14 @@ export function WelcomeScreen({
 
         {/* Input form section of the card */}
         <div className="mt-8">
-          <InputForm onSubmit={handleSubmit} isLoading={isLoading} context="homepage" />
+          <InputForm
+            onSubmit={handleSubmit}
+            onImageUpload={onImageUpload}
+            isLoading={isLoading}
+            context="homepage"
+            inputValue={inputValue}
+            setInputValue={setInputValue}
+          />
           {isLoading && (
             <div className="mt-4 flex justify-center">
               <Button

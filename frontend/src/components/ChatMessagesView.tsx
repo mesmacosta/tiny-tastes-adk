@@ -224,10 +224,13 @@ interface ChatMessagesViewProps {
   isLoading: boolean;
   scrollAreaRef: React.RefObject<HTMLDivElement | null>;
   onSubmit: (query: string) => void;
+  onImageUpload: (image_b64: string) => void;
   onCancel: () => void;
   displayData: string | null;
   messageEvents: Map<string, ProcessedEvent[]>;
   websiteCount: number;
+  inputValue: string;
+  setInputValue: (value: string) => void;
 }
 
 export function ChatMessagesView({
@@ -235,9 +238,12 @@ export function ChatMessagesView({
   isLoading,
   scrollAreaRef,
   onSubmit,
+  onImageUpload,
   onCancel,
   messageEvents,
   websiteCount,
+  inputValue,
+  setInputValue,
 }: ChatMessagesViewProps) {
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
 
@@ -339,7 +345,14 @@ export function ChatMessagesView({
       </div>
       <div className="border-t border-neutral-700 p-4 w-full">
         <div className="max-w-3xl mx-auto">
-          <InputForm onSubmit={onSubmit} isLoading={isLoading} context="chat" />
+          <InputForm
+            onSubmit={onSubmit}
+            onImageUpload={onImageUpload}
+            isLoading={isLoading}
+            context="chat"
+            inputValue={inputValue}
+            setInputValue={setInputValue}
+          />
           {isLoading && (
             <div className="mt-4 flex justify-center">
               <Button
