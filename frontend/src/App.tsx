@@ -55,6 +55,7 @@ export default function App() {
   const [websiteCount, setWebsiteCount] = useState<number>(0);
   const [isBackendReady, setIsBackendReady] = useState(false);
   const [isCheckingBackend, setIsCheckingBackend] = useState(true);
+  const [inputValue, setInputValue] = useState("");
   const currentAgentRef = useRef('');
   const accumulatedTextRef = useRef("");
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -438,6 +439,25 @@ export default function App() {
     }
   };
 
+  const handleImageUpload = async (image_b64: string) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/detect-ingredients`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ image_b64 }),
+      });
+      const data = await response.json();
+      setInputValue(data.ingredients);
+    } catch (error) {
+      console.error("Error detecting ingredients:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSubmit = useCallback(async (query: string, model: string, effort: string) => {
     if (!query.trim()) return;
 
@@ -700,8 +720,11 @@ export default function App() {
           ) : messages.length === 0 ? (
             <WelcomeScreen
               handleSubmit={handleSubmit}
+              onImageUpload={handleImageUpload}
               isLoading={isLoading}
               onCancel={handleCancel}
+              inputValue={inputValue}
+              setInputValue={setInputValue}
             />
           ) : (
             <ChatMessagesView
@@ -709,10 +732,13 @@ export default function App() {
               isLoading={isLoading}
               scrollAreaRef={scrollAreaRef}
               onSubmit={handleSubmit}
+              onImageUpload={handleImageUpload}
               onCancel={handleCancel}
               displayData={displayData}
               messageEvents={messageEvents}
               websiteCount={websiteCount}
+              inputValue={inputValue}
+              setInputValue={setInputValue}
             />
           )}
         </div>

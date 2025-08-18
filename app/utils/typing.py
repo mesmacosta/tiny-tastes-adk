@@ -41,6 +41,12 @@ class TranslateRequest(BaseModel):
     text: str
 
 
+class DetectIngredientsRequest(BaseModel):
+    """Represents the input for a translation request."""
+
+    image_b64: str
+
+
 class Feedback(BaseModel):
     """Represents feedback for a conversation."""
 
