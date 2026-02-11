@@ -1,0 +1,445 @@
+manifest:
+  version: "0.1.3"
+  schema: https://a2as.org/cert/schema
+  subject:
+    name: mesmacosta/tiny-tastes-adk
+    source: https://github.com/mesmacosta/tiny-tastes-adk
+    branch: main
+    commit: "aa919004"
+    scope: [app/agent.py, app/config.py, app/image_recipe_agent.py, app/image_utils.py, app/translation_utils.py, app/utils/gcs.py,
+      app/vector_search.py, app/video_agent.py]
+  issued:
+    by: A2AS.org
+    at: '2026-02-11T16:53:29Z'
+    url: https://a2as.org/certified/agents/mesmacosta/tiny-tastes-adk
+  signatures:
+    digest: sha256:O-fCZc2ltiUNBLEl7JIeEJPiFoeP-d48mS1Kj0R51Is
+    key: ed25519:GlBly-Q_PhKKqmdgBPVpAPVN8oP0FOYrs7a9zpoxQo8
+    sig: ed25519:n3Rvp1zXx60-TzkANTMPL-trAphgJCWwVWop6y2O7-A9K494veR3lrKZAG3NJvEuQFfpN1yHpsRtmufg_XuRBw
+
+agents:
+  agent.EscalationChecker:
+    type: class
+    models: [gemini-2.5-flash]
+    params:
+      class: EscalationChecker
+      base: BaseAgent
+      name: name
+  agent.ImageEmbeddingAgent:
+    type: class
+    models: [gemini-2.5-flash]
+    params:
+      class: ImageEmbeddingAgent
+      base: BaseAgent
+      name: name
+  agent.ImageRecipeAgent:
+    type: class
+    models: [gemini-2.5-flash]
+    params:
+      class: ImageRecipeAgent
+      base: BaseAgent
+      name: name
+  agent.TranslationAgent:
+    type: class
+    models: [gemini-2.5-flash]
+    params:
+      class: TranslationAgent
+      base: BaseAgent
+      name: name
+  agent.VideoGenerationExecutor:
+    type: class
+    models: [gemini-2.5-flash]
+    params:
+      class: VideoGenerationExecutor
+      base: BaseAgent
+      name: name
+  escalation_checker:
+    type: instance
+    models: [gemini-2.5-flash]
+    params:
+      name: escalation_checker
+  final_recipe_presenter_agent:
+    type: instance
+    models: [config.critic_model]
+    params:
+      name: final_recipe_presenter_agent
+      description: Formats the final recipe into a user-friendly markdown report.
+      instruction: [You are a food blogger creating beautiful recipe cards for parents., 'Your task is to take the final,
+          approved recipe data from the ''current_recipe'' state key and format it into a clear and appealing markdown report.',
+        '**CRITICAL INSTRUCTION: IMAGE PLACEHOLDERS**', 'For EVERY ingredient in the recipe''s ingredient list, you MUST NOT
+          generate an image. Instead, you MUST insert a special placeholder tag in the format: [IMAGE_FOR:<ingredient_name>]',
+        'For example, for ''1 cup of mashed bananas'', you would write: `* 1 cup of mashed bananas [IMAGE_FOR:bananas]`',
+        '**REPORT STRUCTURE:**', '-   Start with the recipe `title` as a main heading (`#`).', '-   Include the `description`
+          and `age_appropriateness`.', '-   Use a sub-heading (`##`) for "Ingredients". For each item, list the ingredient
+          and its corresponding placeholder tag.', '-   Use a sub-heading (`##`) for "Instructions" and list the steps.',
+        '-   Add a "Nutrition Notes" section (`##`) with a helpful summary of the recipe''s health benefits for a baby.',
+        '-   Add a "Safety First!" section (`##`) with a reminder about appropriate food texture.', 'Your final output must
+          be a single, well-formatted markdown document containing the placeholders.']
+      output_key: final_recipe_report
+  image_embedding_agent:
+    type: instance
+    models: [gemini-2.5-flash]
+    params:
+      name: image_embedding_agent
+  image_generator_agent:
+    type: instance
+    params:
+      name: image_generator_agent
+      description: Generates an image for a recipe using the summary from the recipe_summarizer_prompt_agent.
+      sub_agents: [image_recipe_agent]
+  image_recipe_agent:
+    type: instance
+    models: [gemini-2.5-flash]
+    params:
+      name: image_recipe_agent
+  interactive_recipe_agent:
+    type: instance
+    models: [config.worker_model]
+    tools: [agent_tool]
+    params:
+      name: interactive_recipe_agent
+      description: The primary assistant for creating baby food recipes. It collaborates with the user to generate a recipe
+        and then gets it approved before finalization.
+      instruction: ['You are a friendly and helpful AI assistant for parents, named ''Tiny Tastes''.', Your job is to help
+          users create delicious and healthy baby food recipes., '**Workflow:**', '1.  **Generate Recipe:** When the user
+          gives you a list of ingredients, your *only* first step is to call the `recipe_generator` tool.', '3.  **Execute
+          Refinement:** Once the user gives EXPLICIT approval (e.g., "looks good", "yes please"), you MUST delegate the task
+          to the `recipe_creation_pipeline` agent.', 'Current date: {datetime.datetime.now.strftime}', 'Do not perform any
+          research or evaluation yourself. Your job is to Generate, Present, and Delegate.']
+      output_key: initial_recipe
+      sub_agents: [recipe_creation_pipeline]
+  iterative_refinement_loop:
+    type: instance
+    params:
+      name: iterative_refinement_loop
+      max_iterations: config.max_search_iterations
+      sub_agents: [pediatrician_critic_agent, escalation_checker, recipe_refiner_agent]
+  pediatrician_critic_agent:
+    type: instance
+    models: [config.critic_model]
+    params:
+      name: pediatrician_critic_agent
+      description: Evaluates a baby food recipe for safety, nutritional value, and age-appropriateness.
+      instruction: [You are a board-certified pediatrician and infant nutrition specialist., Your sole task is to critically
+          evaluate the provided baby food recipe from the 'current_recipe' state key., '**EVALUATION CRITERIA:**', '1.  **Safety:**
+          Are the ingredients safe for babies? Is the texture and preparation method appropriate to prevent choking hazards
+          for the specified age? (e.g., no honey for infants under 1, grapes must be quartered).', '2.  **Nutritional Value:**
+          Is the recipe nutritionally balanced? Does it provide key nutrients for a baby''s development?', '3.  **Age Appropriateness:**
+          Is the suggested age range accurate for the ingredients and texture?', '**OUTPUT:**', '- If the recipe is excellent,
+          grade it as "pass".', '- If you find ANY issues, you MUST grade it as "fail". Provide a detailed `comment` explaining
+          the exact problems.', '- If the grade is "fail", you MUST provide a list of 2-3 specific `follow_up_questions` for
+          a search engine that would help fix the problems you identified. For example: "How to safely prepare sweet potatoes
+          for a 6 month old baby?" or "Nutritional benefits of avocado in infant diet".', 'Current date: {datetime.datetime.now.strftime}',
+        'Your response must be a single, raw JSON object validating against the ''PediatricianFeedback'' schema.']
+      output_schema: PediatricianFeedback
+      disallow_transfer_to_parent: "True"
+      disallow_transfer_to_peers: "True"
+      output_key: pediatrician_evaluation
+  recipe_creation_pipeline:
+    type: instance
+    params:
+      name: recipe_creation_pipeline
+      description: Takes an initial recipe, runs it through an iterative refinement loop with a pediatrician critic, and then
+        formats the final, approved recipe.
+      sub_agents: [iterative_refinement_loop, final_recipe_presenter_agent, image_embedding_agent, recipe_summarizer_prompt_agent,
+        image_generator_agent, video_generator_agent]
+  recipe_generator:
+    type: instance
+    models: [config.worker_model]
+    tools: [google_search]
+    params:
+      name: recipe_generator
+      description: Generates a creative and simple toddler food recipe for a child aged 1+ year, either from a list of ingredients
+        or from a direct recipe name.
+      instruction: ['You are a creative chef specializing in recipes for toddlers. Your task is to create a simple, single-serving
+          recipe suitable for a child aged 1+ year.', 'You will receive one of two inputs:', 1.  A list of one or more ingredients.,
+        '2.  The name of a specific recipe (e.g., "Mini Chicken Meatballs").', '**TASK:**', '- If given a list of ingredients,
+          invent a creative and simple recipe using them.', '- If given the name of a recipe, provide a simple version of
+          that recipe.', '- All recipes should be tailored for a toddler aged 1+ year, focusing on soft textures, small pieces,
+          and avoiding common choking hazards.', '**RULES:**', 1.  Your output MUST be a valid JSON object that conforms to
+          the `Recipe` schema., '2.  The recipe must be simple, with clear instructions suitable for a beginner cook.', 3.  The
+          `age_range` field in your output MUST be set to "1+ year".]
+      output_key: current_recipe
+  recipe_refiner_agent:
+    type: instance
+    models: [config.worker_model]
+    tools: [google_search]
+    params:
+      name: recipe_refiner_agent
+      description: Refines and improves a baby food recipe based on pediatrician feedback and web research.
+      planner: BuiltInPlanner
+      instruction: [You are a recipe developer tasked with fixing a baby food recipe that failed a pediatric review., '1.  **Review
+          Feedback:** Carefully read the `comment` in the ''pediatrician_evaluation'' state key to understand what needs to
+          be fixed.', '2.  **Research Solutions:** Execute EVERY search query provided in the `follow_up_questions` using
+          the `Google Search` tool to find solutions.', '3.  **Revise the Recipe:** Using the research findings, rewrite the
+          original recipe from ''current_recipe'' to address all the pediatrician''s concerns. This may involve changing ingredients,
+          measurements, or instructions.', '4.  **Output:** Your output MUST be a single, raw JSON string that strictly conforms
+          to the `Recipe` schema. Do NOT add any markdown formatting like ```json ... ``` around the JSON string.', 'The `Recipe`
+          schema is as follows:', '{{', '"title": "string (The creative and appealing name of the recipe.)",', '"description":
+          "string (A brief, one-sentence summary of the recipe.)",', '"ingredients": "list[string] (A list of all ingredients
+          with precise measurements.)",', '"instructions": "list[string] (Step-by-step preparation and cooking instructions.)",',
+        '"age_appropriateness": "string (The recommended baby age range for this recipe (e.g., ''6-8 months'').)"', '}}',
+        Ensure your entire output is ONLY this JSON string.]
+      after_agent_callback: collect_research_sources_callback
+      output_key: current_recipe
+  recipe_summarizer_prompt_agent:
+    type: instance
+    models: [config.worker_model]
+    params:
+      name: recipe_summarizer_prompt_agent
+      description: Summarizes a recipe into a short phrase for a video or image.
+      instruction: [You are a creative assistant that specializes in creating short video summaries for recipes., 'Your task
+          is to take the recipe from the ''current_recipe'' state key and summarize it into a short, engaging phrase that
+          is suitable for an 8-second video.', 'Make sure your video summary does not contain sensitive words like Baby, babies,
+          toddler, or infant, which will be refused by the Video generation agent.', Your output MUST be only this short phrase.]
+      output_key: recipe_summary_prompt
+  translate_recipe_agent:
+    type: instance
+    params:
+      name: translate_recipe_agent
+      description: Translates the final recipe report to Brazilian Portuguese.
+      sub_agents: [translation_agent]
+  translation_agent:
+    type: instance
+    models: [gemini-2.5-flash]
+    params:
+      name: translation_agent
+  video_generator_agent:
+    type: instance
+    params:
+      name: video_generator_agent
+      description: Generates a video for a recipe using the summary from the recipe_summarizer_prompt_agent.
+      sub_agents: [VideoGenerationExecutor]
+
+models:
+  config.critic_model:
+    type: literal
+    agents: [pediatrician_critic_agent, final_recipe_presenter_agent]
+  config.worker_model:
+    type: literal
+    agents: [recipe_generator, recipe_refiner_agent, recipe_summarizer_prompt_agent, interactive_recipe_agent]
+  gemini-2.5-flash:
+    type: default
+    agents: [agent.ImageRecipeAgent, agent.EscalationChecker, agent.ImageEmbeddingAgent, image_recipe_agent, escalation_checker,
+      image_embedding_agent, agent.TranslationAgent, translation_agent, agent.VideoGenerationExecutor]
+
+tools:
+  agent_tool:
+    type: agent
+    agents: [interactive_recipe_agent]
+    params:
+      wrapper: AgentTool
+  google_search:
+    type: module
+    agents: [recipe_generator, recipe_refiner_agent]
+
+teams:
+  image_generator_agent:
+    type: sequential
+    agents: [image_generator_agent, image_recipe_agent]
+  interactive_recipe_agent:
+    type: hierarchy
+    agents: [interactive_recipe_agent, recipe_creation_pipeline]
+  recipe_creation_pipeline:
+    type: sequential
+    agents: [recipe_creation_pipeline, iterative_refinement_loop, final_recipe_presenter_agent, image_embedding_agent, recipe_summarizer_prompt_agent,
+      image_generator_agent, video_generator_agent]
+  translate_recipe_agent:
+    type: sequential
+    agents: [translate_recipe_agent, translation_agent]
+  video_generator_agent:
+    type: sequential
+    agents: [video_generator_agent, VideoGenerationExecutor]
+
+imports:
+  AgentTool: google.adk.tools.agent_tool.AgentTool
+  AsyncGenerator: typing.AsyncGenerator
+  asyncio: asyncio
+  auth: google.auth
+  base64: base64
+  BaseAgent: google.adk.agents.BaseAgent
+  BaseModel: pydantic.BaseModel
+  bigquery: google.cloud.bigquery
+  BuiltInPlanner: google.adk.planners.BuiltInPlanner
+  CallbackContext: google.adk.agents.callback_context.CallbackContext
+  CloudTraceLoggingSpanExporter: app.utils.tracing.CloudTraceLoggingSpanExporter
+  config: app.config.config
+  create_bucket_if_not_exists: app.utils.gcs.create_bucket_if_not_exists
+  dataclass: dataclasses.dataclass
+  datetime: datetime.datetime
+  EmbedContentConfig: google.genai.types.EmbedContentConfig
+  Event: google.adk.events.Event
+  EventActions: google.adk.events.EventActions
+  exceptions: google.api_core.exceptions
+  export: opentelemetry.sdk.trace.export
+  FastAPI: fastapi.FastAPI
+  Feedback: app.utils.typing.Feedback
+  Field: pydantic.Field
+  genai: google.genai
+  genai_types: google.genai.types
+  generate_ingredient_image: app.image_utils.generate_ingredient_image
+  generate_recipe_image: app.image_utils.generate_recipe_image
+  get_cached: app.vector_search.get_cached
+  get_fast_api_app: google.adk.cli.fast_api.get_fast_api_app
+  google_cloud_logging: google.cloud.logging
+  google_exceptions: google.api_core.exceptions
+  google_search: google.adk.tools.google_search
+  ImageRecipeAgent: app.image_recipe_agent.ImageRecipeAgent
+  insert: app.vector_search.insert
+  InvocationContext: google.adk.agents.invocation_context.InvocationContext
+  io: io
+  json: json
+  Literal: typing.Literal
+  LlmAgent: google.adk.agents.LlmAgent
+  logging: logging
+  LoopAgent: google.adk.agents.LoopAgent
+  lru_cache: functools.lru_cache
+  os: os
+  re: re
+  requests: google.auth.transport.requests
+  root_agent: app.agent.root_agent
+  SequentialAgent: google.adk.agents.SequentialAgent
+  storage: google.cloud.storage
+  sys: sys
+  timedelta: datetime.timedelta
+  trace: opentelemetry.trace
+  TracerProvider: opentelemetry.sdk.trace.TracerProvider
+  translate: google.cloud.translate_v2
+  translate_text: app.translation_utils.translate_text
+  TranslateRequest: app.utils.typing.TranslateRequest
+  types: google.genai.types
+  urlparse: urllib.parse.urlparse
+  UTC: datetime.UTC
+  uuid: uuid
+  uvicorn: uvicorn
+  VideoGenerationExecutor: app.video_agent.VideoGenerationExecutor
+
+functions:
+  __init__:
+    type: sync
+    module: app.video_agent
+    args: [self, name]
+  _run_async_impl:
+    type: async
+    module: app.video_agent
+    args: [self, ctx]
+    params:
+      returns: AsyncGenerator
+  _search_for_similar_object:
+    type: sync
+    module: app.vector_search
+    args: [query_prompt, object_type_to_search]
+  collect_feedback:
+    type: sync
+    module: app.server
+    args: [feedback]
+    params:
+      returns: dict
+  collect_research_sources_callback:
+    type: sync
+    module: app.agent
+    args: [callback_context]
+    params:
+      returns: None
+  create_bucket_if_not_exists:
+    type: sync
+    module: app.utils.gcs
+    args: [bucket_name, project, location]
+    params:
+      returns: None
+  create_signed_url_for_gcs_object:
+    type: sync
+    module: app.video_agent
+    args: [gcs_uri]
+  download_image_from_gcs:
+    type: sync
+    module: app.image_utils
+    args: [gcs_uri]
+  generate_ingredient_image:
+    type: sync
+    module: app.image_utils
+    args: [ingredient_name]
+  generate_recipe_image:
+    type: sync
+    module: app.image_utils
+    args: [recipe_title, recipe_description]
+  generate_video_from_recipe:
+    type: async
+    module: app.video_agent
+    args: [video_prompt]
+  get_cached:
+    type: sync
+    module: app.vector_search
+    args: [prompt, object_type_to_search]
+  get_ingredient_image:
+    type: sync
+    module: app.agent
+    args: [ingredient_name]
+    params:
+      returns: dict
+  get_text_embedding:
+    type: sync
+    module: app.vector_search
+    args: [text_content, output_dimensionality]
+  insert:
+    type: sync
+    module: app.vector_search
+    args: [object_type, prompt, new_gcs_uri]
+    params:
+      returns: None
+  insert_object_record:
+    type: sync
+    module: app.vector_search
+    args: [project_id, dataset_id, table_id, prompt, gcs_uri, embedding, object_type, load_type]
+    params:
+      returns: bool
+  main:
+    type: async
+    module: app.video_agent
+  translate:
+    type: sync
+    module: app.server
+    args: [request]
+    params:
+      returns: dict
+  translate_text:
+    type: sync
+    module: app.translation_utils
+    args: [text, target_language]
+    params:
+      returns: str
+  upload_image_to_gcs:
+    type: sync
+    module: app.image_utils
+    args: [image_bytes, object_name]
+
+variables:
+  ALLOW_ORIGINS:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [app.server]
+  GOOGLE_CLOUD_BUCKET:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [app.image_utils, app.video_agent]
+  GOOGLE_CLOUD_LOCATION:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [app.image_utils, app.video_agent, app.vector_search]
+  GOOGLE_CLOUD_PROJECT:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [app.image_utils, app.video_agent, app.vector_search]
+  OTEL_SDK_DISABLED:
+    type: env
+    params:
+      caller: [os.environ]
+  SERVICE_ACCOUNT_EMAIL:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [app.video_agent]
